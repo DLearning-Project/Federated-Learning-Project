@@ -1,0 +1,32 @@
+# Environment files (keep the committed .env.example templates)
+.env
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+npm-debug.log*
+
+# Backend
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Personal Claude Code settings
+.claude/settings.local.json
+
+# Project brief (kept local)
+/instructions.md
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/
+*.swp

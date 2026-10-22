@@ -1,0 +1,41 @@
+{
+  "note": "Illustrative profiles for teaching only. Values are rounded, uncalibrated guesses, not measurements of real devices.",
+  "profiles": [
+    {
+      "id": "phone",
+      "name": "Smartphone",
+      "description": "Mid-range phone training on a small local dataset.",
+      "seconds_per_epoch": 60,
+      "train_power_w": 4.0,
+      "radio_power_w": 1.5,
+      "typical_bandwidth_mbps": 20
+    },
+    {
+      "id": "raspberry-pi",
+      "name": "Raspberry Pi 4",
+      "description": "Low-power single-board computer with CPU-only training.",
+      "seconds_per_epoch": 240,
+      "train_power_w": 6.0,
+      "radio_power_w": 1.0,
+      "typical_bandwidth_mbps": 10
+    },
+    {
+      "id": "jetson",
+      "name": "Edge GPU board",
+      "description": "Small embedded GPU module, Jetson-class.",
+      "seconds_per_epoch": 25,
+      "train_power_w": 15.0,
+      "radio_power_w": 2.0,
+      "typical_bandwidth_mbps": 50
+    },
+    {
+      "id": "laptop",
+      "name": "Laptop",
+      "description": "Consumer laptop training on CPU or integrated GPU.",
+      "seconds_per_epoch": 30,
+      "train_power_w": 35.0,
+      "radio_power_w": 2.5,
+      "typical_bandwidth_mbps": 100
+    }
+  ]
+}

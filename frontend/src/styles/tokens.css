@@ -1,0 +1,58 @@
+/* Central design tokens: Minimalist Warm Neutral (see colors.md).
+   Change colors, spacing and type here — never hard-code them in components. */
+:root {
+  /* Palette */
+  --color-bg: #f1f1ef; /* light gray: dominant background */
+  --color-surface: #fffdf7; /* warm off-white: cards and panels */
+  --color-ink: #242424; /* charcoal: text, nav, icons, primary buttons */
+  --color-muted: #666666; /* secondary text */
+  --color-border: #e0e0de;
+  --color-border-strong: #c9c9c6;
+  --color-yellow: #ffdb00; /* small accents only */
+  --color-orange: #f58a00; /* small accents only */
+  --color-orange-text: #a85c00; /* orange darkened for AA text contrast on light backgrounds */
+  --color-ink-soft: #3a3a3a;
+  --color-subtle: #f7f6f2; /* inset areas inside cards */
+  --color-chart-gray: #9a9a96;
+  --color-chart-light: #cfcfcb;
+
+  /* Status (always paired with text/icons, never color alone) */
+  --color-success: #2f6b3f;
+  --color-error: #a3321f;
+
+  /* Typography (rem-based; 1rem = browser default, usually 16px) */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --text-body: 1.125rem; /* 18px */
+  --text-control: 1.0625rem; /* 17px */
+  --text-small: 1rem; /* 16px minimum for supporting text */
+  --text-card-heading: 1.375rem; /* 22px */
+  --text-section-heading: 1.75rem; /* 28px */
+  --text-page-heading: clamp(1.75rem, 1.2rem + 2vw, 2.625rem); /* 28px → 42px */
+  --leading-body: 1.7;
+  --leading-tight: 1.25;
+
+  /* Spacing scale: 4, 8, 12, 16, 24, 32, 48 */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(36, 36, 36, 0.04);
+  --focus-ring: 0 0 0 3px rgba(245, 138, 0, 0.45);
+
+  --control-height: 3rem; /* 48px */
+  --nav-width: 16.25rem; /* 260px */
+
+  /* Module accents: subtle markers that tell modules apart */
+  --accent-language-models: var(--color-yellow);
+  --accent-acoustics: var(--color-orange);
+  --accent-hardware: var(--color-ink);
+}
