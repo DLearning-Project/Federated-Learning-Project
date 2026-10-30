@@ -1,0 +1,51 @@
+{
+  "collected_at": "2026-10-29T06:28:48+00:00",
+  "os": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.10",
+  "packages": {
+    "torch": "2.14.1+cu130",
+    "torchlibrosa": "0.1.0",
+    "librosa": "1.0.0",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "soundfile": "0.14.0",
+    "soxr": "1.1.0",
+    "scikit-learn": "1.9.1",
+    "pandas": "3.1.0",
+    "matplotlib": "3.11.2",
+    "PyYAML": "6.0.3",
+    "tqdm": "4.70.1",
+    "pytest": "9.2.0"
+  },
+  "gpu": {
+    "cuda_available": true,
+    "torch_cuda_runtime": "13.0",
+    "cudnn": 92400,
+    "devices": [
+      {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "total_memory_mib": 8187,
+        "compute_capability": "8.9"
+      }
+    ],
+    "driver": "581.32"
+  },
+  "git": {
+    "remote": "https://github.com/DLearning-Project/Federated-Learning-Project.git",
+    "branch": "feature/acoustics-ml",
+    "commit": "00a3a28af45d854756796cfa74fd471a46d9a2f1",
+    "dirty": true
+  },
+  "smoke_test": {
+    "passed": true,
+    "matmul_max_abs_error": 0.0,
+    "logmel_shape": [
+      2,
+      1,
+      101,
+      64
+    ],
+    "peak_memory_mib": 20.1
+  }
+}
