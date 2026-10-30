@@ -48,7 +48,7 @@ MODULES = [
     ModuleInfo(
         id="acoustics",
         title="Underwater acoustics",
-        description="Spectrograms, EfficientNet-B0 concepts, and sample-weighted FedAvg aggregation.",
+        description="Spectrograms of real vessel recordings, PANN MobileNetV2 concepts, and sample-weighted FedAvg aggregation.",
         path="/acoustics",
     ),
     ModuleInfo(
