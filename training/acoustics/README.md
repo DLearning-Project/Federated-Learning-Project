@@ -6,14 +6,16 @@ MobileNetV2, first centralized, then FedAvg with 3 simulated clients (IID and
 non-IID). Measured results will later be exported as JSON for
 `backend/app/modules/acoustics/`. Nothing here runs inside the API.
 
-Owner: Bryn. Status: **Phase 1 (environment) done.** No dataset, checkpoint or
-training run exists yet.
+Owner: Bryn. Status: **Phase 1 (environment) done.** No model has been trained
+yet. For the full plan, progress so far, dataset notes and the required run
+record fields, see [TRAINING.md](TRAINING.md).
 
 ## Layout
 
 ```text
 training/acoustics/
-  README.md               this file: setup, verification, run-record rules
+  README.md               this file: setup and GPU verification
+  TRAINING.md             plan, progress, dataset notes, run-record rules
   requirements.txt        direct dependencies, exact pins
   requirements.lock.txt   full `pip freeze` of the verified environment
   envinfo.py              environment provenance + GPU smoke test
@@ -100,8 +102,7 @@ after measuring peak memory.
 ## 3. Run records (applies to every later phase)
 
 Every training or evaluation run gets a unique run ID and a machine-readable
-record. Start each record from `envinfo.collect_env()` and add the dataset,
-split, preprocessing, model, optimizer, FL and result fields listed in
-`PROJECT_CONTEXT` §5–6. Measured results go in `results/` and must never be
-hand-edited. Raw audio, `.venv/` and weight files (`*.pt`, `*.pth`, `*.ckpt`)
+record. Start each record from `envinfo.collect_env()` and add the fields
+listed in [TRAINING.md](TRAINING.md#run-records-required-for-every-training-run).
+Measured results go in `results/` and must never be hand-edited. Raw audio, `.venv/` and weight files (`*.pt`, `*.pth`, `*.ckpt`)
 are gitignored.

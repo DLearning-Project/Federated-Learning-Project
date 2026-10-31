@@ -8,14 +8,15 @@ import { AssumptionsList, ModeBadge } from '../../components/Results';
 import { ApiErrorState, EmptyState, LoadingState, StatusMessage } from '../../components/StatusMessage';
 import { useApiAction } from '../../hooks/useApiAction';
 import { aggregateFedAvg } from './api';
-import { Spectrogram, StackedBars } from './Charts';
+import { StackedBars } from './Charts';
 import distributions from './data/label_distributions.json';
+import { SpectrogramExplorer } from './SpectrogramExplorer';
 import type { ClientRow, FedAvgInput, Scenario } from './types';
 
 const PIPELINE = [
   { title: 'Audio', text: 'A hydrophone records underwater sound, such as a passing ship.' },
   { title: 'Spectrogram', text: 'The sound becomes an image of frequency over time.' },
-  { title: 'Local CNN training', text: 'Each station trains an image model (planned: EfficientNet-B0) on its own recordings.' },
+  { title: 'Local CNN training', text: 'Each station trains an audio model (planned: PANN MobileNetV2) on its own recordings.' },
   { title: 'FedAvg', text: 'The server averages model weights, weighted by how much data each station has.' },
   { title: 'Global model', text: 'The combined model goes back to every station for the next round.' },
 ];
@@ -81,53 +82,50 @@ export default function AcousticsPage() {
             </li>
           ))}
         </ol>
-        <Details summary="Technical details: spectrograms and EfficientNet-B0">
+        <Details summary="Technical details: spectrograms and PANN MobileNetV2">
           <p>
             A spectrogram splits audio into short overlapping windows and measures the energy at each frequency (a short-time Fourier transform). Ship
-            engines and propellers create steady tones and harmonics, which appear as horizontal lines.
+            engines and propellers create steady tones and harmonics, which appear as horizontal lines. A log-Mel spectrogram then groups the
+            frequencies into bands that are narrow at low frequencies and wide at high ones, and measures each band in decibels.
           </p>
           <p>
-            EfficientNet-B0 is a compact convolutional network that scales depth, width and input resolution together. It is the planned model for this
-            module. <strong>This demo does not train a CNN and does not predict accuracy.</strong>
+            PANN MobileNetV2 is a compact convolutional network pretrained on AudioSet, a large collection of everyday sounds. It computes the log-Mel
+            spectrogram itself from 32 kHz audio, and is the planned model for this module. <strong>This page does not train a CNN and does not predict accuracy.</strong>
           </p>
         </Details>
       </Card>
 
-      <div className="grid-2" style={{ alignItems: 'start' }}>
-        <Card title="Example spectrogram" subtitle="Clearly synthetic: generated, not recorded">
-          <Spectrogram />
-        </Card>
+      <SpectrogramExplorer />
 
-        <Card
-          title="Who has which labels?"
-          subtitle="Illustrative vessel labels at three stations"
-          actions={
-            <div className="segmented" role="group" aria-label="Label distribution">
-              {(['balanced', 'skewed'] as Scenario[]).map((s) => (
-                <button key={s} type="button" aria-pressed={scenario === s} onClick={() => setScenario(s)}>
-                  {s === 'balanced' ? 'Balanced' : 'Skewed'}
-                </button>
-              ))}
-            </div>
-          }
-        >
-          <StackedBars clients={distributions.clients} classes={distributions.classes} counts={distributions.scenarios[scenario].counts} />
-          <p className="small muted">
-            {scenario === 'balanced'
-              ? 'Every station has the same mix of vessel types. Local models learn similar patterns.'
-              : 'Each station mostly hears one vessel type (non-IID data). Local models drift apart, which makes aggregation harder.'}
-          </p>
-          <div>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setRows((rs) => rs.map((r, i) => ({ ...r, samples: rowsFor(scenario)[i].samples })))}
-            >
-              Use these sample counts below
-            </button>
+      <Card
+        title="Who has which labels?"
+        subtitle="Illustrative vessel labels at three stations"
+        actions={
+          <div className="segmented" role="group" aria-label="Label distribution">
+            {(['balanced', 'skewed'] as Scenario[]).map((s) => (
+              <button key={s} type="button" aria-pressed={scenario === s} onClick={() => setScenario(s)}>
+                {s === 'balanced' ? 'Balanced' : 'Skewed'}
+              </button>
+            ))}
           </div>
-        </Card>
-      </div>
+        }
+      >
+        <StackedBars clients={distributions.clients} classes={distributions.classes} counts={distributions.scenarios[scenario].counts} />
+        <p className="small muted">
+          {scenario === 'balanced'
+            ? 'Every station has the same mix of vessel types. Local models learn similar patterns.'
+            : 'Each station mostly hears one vessel type (non-IID data). Local models drift apart, which makes aggregation harder.'}
+        </p>
+        <div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setRows((rs) => rs.map((r, i) => ({ ...r, samples: rowsFor(scenario)[i].samples })))}
+          >
+            Use these sample counts below
+          </button>
+        </div>
+      </Card>
 
       <Section
         title="FedAvg calculator"
@@ -293,14 +291,14 @@ export default function AcousticsPage() {
         explanation="Note that skewed labels can still hurt the global model even with correct weights: weighting fixes how much each station counts, not what it learned."
       />
 
-      <ExtensionCard title="Future: PORTIA data, EfficientNet-B0 training and evaluation">
+      <ExtensionCard title="Future: PANN MobileNetV2 training and evaluation">
         <p>
-          Owner: Acoustics teammate. Planned additions behind <code>backend/app/modules/acoustics/service.py</code>:
+          Owner: Acoustics teammate. Planned additions, trained offline in <code>training/acoustics/</code>, never inside an API request:
         </p>
         <ul>
-          <li>Loading PORTIA recordings and caching their spectrograms.</li>
-          <li>EfficientNet-B0 local training in a separate worker, not inside an API request.</li>
-          <li>Measured evaluation results on a held-out set that is kept separate from all client training data.</li>
+          <li>Centralized fine-tuning of PANN MobileNetV2 for vessel-present versus no-vessel detection on QiandaoEar22.</li>
+          <li>FedAvg with three simulated stations, using balanced (IID) and skewed (non-IID) splits of the same training data.</li>
+          <li>Measured evaluation results on a held-out set that is kept separate from all client training data, exported as JSON for this page.</li>
         </ul>
       </ExtensionCard>
     </div>

@@ -18,7 +18,7 @@ export class ApiError extends Error {
 
 /** Matches backend/app/schemas/common.py CalcEnvelope. */
 export interface CalcEnvelope<I, R> {
-  mode: 'illustrative';
+  mode: 'illustrative' | 'measured';
   inputs: I;
   results: R;
   units: Record<string, string>;
