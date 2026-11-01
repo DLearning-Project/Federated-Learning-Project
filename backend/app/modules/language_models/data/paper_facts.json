@@ -25,7 +25,8 @@
         "student": "LoRA freezes the big weight matrix and trains two thin matrices whose product is the update.",
         "researcher": "ΔW = BA with rank at most r; W is frozen and only (A, B) are trained and exchanged."
       },
-      "analogy": "Margin notes on a shared textbook: the book stays the same, only the notes change."
+      "analogy": "Margin notes on a shared textbook: the book stays the same, only the notes change.",
+      "equation_plain": "W′ = W + ΔW = W + B A,   B ∈ ℝ^{m×r}, A ∈ ℝ^{r×n},   r ≪ min(m, n)"
     },
     {
       "id": "lora_rank",
@@ -38,7 +39,8 @@
         "beginner": "How many independent adjustments a client's notes can make.",
         "student": "The size of the bottleneck between B and A; a larger rank allows a richer update but costs more to send.",
         "researcher": "Upper bound on rank(B_kA_k); heterogeneous clients use different r_k."
-      }
+      },
+      "equation_plain": "rank(B A) ≤ r"
     },
     {
       "id": "adapters",
@@ -51,7 +53,8 @@
         "beginner": "The two small pieces of a client's notes that get sent to the server.",
         "student": "B and A are the small trainable matrices; their product is the client's update.",
         "researcher": "Local factors (B_k, A_k); Algorithm 1 initializes B_k = 0, A_k ~ N(0, σ²) in round 1."
-      }
+      },
+      "equation_plain": "B_k ∈ ℝ^{m×r_k},   A_k ∈ ℝ^{r_k×n}"
     },
     {
       "id": "delta_w",
@@ -64,7 +67,8 @@
         "beginner": "The combined lesson learned from all hospitals, weighted by how much data each has.",
         "student": "The weighted average of every client's BA product; this is what aggregation should produce.",
         "researcher": "Target ΔW = Σ_k w_k B_kA_k ∈ ℝ^{m×n}; FLoRIST obtains its SVD without forming it."
-      }
+      },
+      "equation_plain": "ΔW = Σ_k (n_k/N) ΔW_k = Σ_k w_k B_k A_k"
     },
     {
       "id": "aggregation_weight",
@@ -77,7 +81,8 @@
         "beginner": "A hospital with more patients gets a bigger say.",
         "student": "The fraction of all training examples that belong to client k.",
         "researcher": "w_k = n_k/N; in FLoRIST the weight multiplies A_k in the stack."
-      }
+      },
+      "equation_plain": "w_k = n_k / N,   N = Σ_k n_k,   Σ_k w_k = 1"
     },
     {
       "id": "fedit",
@@ -90,7 +95,8 @@
         "beginner": "Averaging the two halves of everyone's notes separately, then gluing the averages together.",
         "student": "FedIT averages B's and A's separately, which mixes pieces from different clients.",
         "researcher": "(Σ w_iB_i)(Σ w_jA_j) introduces cross terms w_iw_jB_iA_j (i≠j) and w_k² diagonal weights."
-      }
+      },
+      "equation_plain": "B_FedIT = Σ_k w_k B_k,   A_FedIT = Σ_k w_k A_k,   B_FedIT A_FedIT ≠ Σ_k w_k B_k A_k in general"
     },
     {
       "id": "cross_term",
@@ -103,7 +109,8 @@
         "beginner": "A sentence made from the first half of one hospital's note and the second half of another's.",
         "student": "When i ≠ j, B_iA_j combines two different clients' factors and adds an update nobody trained.",
         "researcher": "Off-diagonal blocks w_iw_jB_iA_j, i ≠ j, of the expanded FedIT product."
-      }
+      },
+      "equation_plain": "(Σ_i w_i B_i)(Σ_j w_j A_j) = Σ_i Σ_j w_i w_j B_i A_j"
     },
     {
       "id": "diagonal_weighting",
@@ -116,7 +123,8 @@
         "beginner": "Each hospital's own note gets shrunk twice instead of once.",
         "student": "FedIT's matching-client terms are weighted w_k² rather than w_k.",
         "researcher": "Diagonal of the expanded product carries w_k²; net error = Σ_{i≠j} w_iw_jB_iA_j + Σ_k (w_k² − w_k)B_kA_k."
-      }
+      },
+      "equation_plain": "diagonal block k:  w_k² B_k A_k   vs. target  w_k B_k A_k"
     },
     {
       "id": "weighted_stacking",
@@ -129,7 +137,8 @@
         "beginner": "Keep every hospital's notes intact and side by side, each scaled by its weight.",
         "student": "Stack the B's horizontally and weighted A's vertically; their product is exactly the weighted average.",
         "researcher": "Block product B_stackA_stack = Σ_k w_kB_kA_k; stacked rank r = Σ_k r_k."
-      }
+      },
+      "equation_plain": "B_stack = [B_1 … B_K],   A_stack = [w_1 A_1; …; w_K A_K],   ΔW = B_stack A_stack"
     },
     {
       "id": "reduced_svd",
@@ -142,7 +151,8 @@
         "beginner": "Breaking each stack of notes into its main directions and their strengths.",
         "student": "Factor each stack into rotation × scaling × rotation, keeping only the needed components.",
         "researcher": "Thin SVDs of the two stacks; U_B is m×min(m,r), V_A^T is min(r,n)×n."
-      }
+      },
+      "equation_plain": "B_stack = U_B S_B V_Bᵀ,   A_stack = U_A S_A V_Aᵀ   (Eq. 1)"
     },
     {
       "id": "matrix_q",
@@ -155,7 +165,8 @@
         "beginner": "How the directions in the two stacks line up.",
         "student": "Q connects the two SVDs; it is small because it only involves the stacked rank r.",
         "researcher": "Q ∈ ℝ^{min(m,r)×min(r,n)}; orthogonal when r ≤ min(m,n) (paper states the r×r case)."
-      }
+      },
+      "equation_plain": "Q = V_Bᵀ U_A   (Eq. 2)"
     },
     {
       "id": "matrix_p",
@@ -168,7 +179,8 @@
         "beginner": "A small summary that has the same main directions as the full combined lesson.",
         "student": "P is tiny but has the same singular values as ΔW, so the server never builds the big matrix.",
         "researcher": "SVD(P) = U_PS_PV_P^T yields SVD(ΔW) = (U_BU_P)S_P(V_P^TV_A^T); advantage needs Σr_k ≪ min(m,n)."
-      }
+      },
+      "equation_plain": "P = S_B Q S_A,   ΔW = U_B P V_Aᵀ   (Eq. 2)"
     },
     {
       "id": "singular_value",
@@ -181,7 +193,8 @@
         "beginner": "How important each direction of the combined lesson is.",
         "student": "The strengths of a matrix's independent directions, sorted from largest to smallest.",
         "researcher": "σ_i(ΔW) = diag(S_P); Figure 2 shows rapid decay in q_proj layers of TinyLlama."
-      }
+      },
+      "equation_plain": "M = Σ_i σ_i u_i v_iᵀ,   σ_1 ≥ σ_2 ≥ … ≥ 0"
     },
     {
       "id": "energy",
@@ -194,7 +207,8 @@
         "beginner": "How much of the combined lesson survives if we keep only the top directions.",
         "student": "The fraction of the update's total 'size' kept when you keep only the first p directions.",
         "researcher": "Fraction of ‖ΔW‖_F² retained by the rank-p truncation."
-      }
+      },
+      "equation_plain": "E(p) = Σ_{i≤p} σ_i² / Σ_i σ_i²"
     },
     {
       "id": "energy_threshold",
@@ -207,7 +221,8 @@
         "beginner": "How much of the combined lesson we insist on keeping.",
         "student": "A dial: higher τ keeps more directions (bigger download), lower τ keeps fewer.",
         "researcher": "Energy-based truncation level; τ* tuned in [0.80, 0.99], τ = 0.9 fixed default."
-      }
+      },
+      "equation_plain": "p = smallest p with Σ_{i≤p} σ_i² / Σ_i σ_i² ≥ τ   (Eq. 6)"
     },
     {
       "id": "selected_rank",
@@ -220,7 +235,8 @@
         "beginner": "How many directions the shared update ends up keeping.",
         "student": "The rank of the global adapters, picked automatically by the threshold.",
         "researcher": "Per-layer p_l from Eq. 6; Figure 6 shows layer-wise optimal ranks for q_proj and v_proj."
-      }
+      },
+      "equation_plain": "p ≤ rank(ΔW) ≤ Σ_k r_k"
     },
     {
       "id": "global_adapters",
@@ -233,7 +249,8 @@
         "beginner": "The compact shared notes every hospital downloads.",
         "student": "B_g and A_g are the compressed global update; all clients download the same pair.",
         "researcher": "Rank-p factorization B_gA_g = best rank-p approximation of ΔW (Eckart–Young–Mirsky)."
-      }
+      },
+      "equation_plain": "B_g = (U_B U_P)[:, :p] S_P[:p, :p],   A_g = (V_Pᵀ V_Aᵀ)[:p, :]   (Eq. 3)"
     },
     {
       "id": "rank_matching",
@@ -246,7 +263,8 @@
         "beginner": "Each hospital trims or pads the shared notes to fit its own notebook.",
         "student": "Clients pad with zeros or cut off extra components so the global adapters fit their rank.",
         "researcher": "Zero-padding is exact (BA unchanged) but padded components get zero gradient within the round."
-      }
+      },
+      "equation_plain": "p < r_k: B_k = [B_g | 0], A_k = [A_g; 0]      p > r_k: B_k = B_g[:, :r_k], A_k = A_g[:r_k, :]"
     },
     {
       "id": "eckart_young_bound",
@@ -259,7 +277,8 @@
         "beginner": "Dropping the least important directions loses as little as possible.",
         "student": "The error from compressing to rank p is exactly the size of what was thrown away.",
         "researcher": "Truncated SVD is optimal in ‖·‖_F; FLoRIST's error equals the tail energy (Eq. 5)."
-      }
+      },
+      "equation_plain": "‖ΔW − B_g A_g‖_F ≤ ( Σ_{i>p} σ_i² )^{1/2}   (Eq. 5)"
     },
     {
       "id": "lora_scaling",
@@ -272,7 +291,8 @@
         "beginner": "A fixed volume knob on each client's notes; it must be the same for everyone.",
         "student": "LoRA multiplies BA by α/r; keeping it equal across clients keeps aggregation correct.",
         "researcher": "Scale s_k = α/r_k = 2 for all clients in the official runs; aggregation can ignore it."
-      }
+      },
+      "equation_plain": "ΔW_k = (α / r_k) B_k A_k"
     },
     {
       "id": "heterogeneous_ranks",
@@ -285,7 +305,8 @@
         "beginner": "Some hospitals have big notebooks, most have small ones.",
         "student": "Different clients can afford different adapter sizes.",
         "researcher": "Heavy-tail rank distribution 40/20/20/10/10 over ranks 4/8/16/32/64."
-      }
+      },
+      "equation_plain": "r_k ∈ {4, 8, 16, 32, 64}"
     },
     {
       "id": "communication_cost",
@@ -298,7 +319,8 @@
         "beginner": "How much the server sends back to the hospitals each round.",
         "student": "The size of what clients download each round; FLoRIST shrinks it by sending rank-p adapters.",
         "researcher": "Download-only parameter count per round; MB conversions in Table 3 and Appendix F."
-      }
+      },
+      "equation_plain": "cost = total parameters downloaded per round"
     },
     {
       "id": "communication_efficiency",
@@ -311,7 +333,8 @@
         "beginner": "A score where higher means less data to download.",
         "student": "One over the download size; Table 2 lists it ×10⁻⁴.",
         "researcher": "Two stated definitions (1/rank vs 1/(rank/2)); see verification notes."
-      }
+      },
+      "equation_plain": "Eff. = 1 / total parameters downloaded ≈ 1 / total download rank"
     },
     {
       "id": "flora",
@@ -324,7 +347,8 @@
         "beginner": "Every hospital receives everyone's notes in full.",
         "student": "Exact stacking, but the download grows with every extra client.",
         "researcher": "Stacked rank Σr_k broadcast; merge-and-reinitialize client protocol."
-      }
+      },
+      "equation_plain": "download rank = Σ_k r_k"
     },
     {
       "id": "flexlora",
@@ -337,7 +361,8 @@
         "beginner": "The server rewrites the full combined lesson, then sends each hospital a summary sized to its notebook.",
         "student": "Full SVD of the big update, with a different-size slice per client.",
         "researcher": "Explicit m×n ΔW and full SVD: O(L·min(m,n)·mn) server cost."
-      }
+      },
+      "equation_plain": "ΔW = U S Vᵀ,   B_k = U[:, :r_k] S[:r_k, :r_k],   A_k = Vᵀ[:r_k, :]"
     },
     {
       "id": "ffa_lora",
@@ -350,7 +375,8 @@
         "beginner": "Everyone shares the same second half of the notes and only writes the first half.",
         "student": "Freeze A for everyone so averaging B is exact.",
         "researcher": "Exact aggregation via shared frozen A_init; half the trainable parameters."
-      }
+      },
+      "equation_plain": "ΔW_k = B_k A_init,   ΔW = (Σ_k w_k B_k) A_init"
     }
   ],
   "reported_results": {
