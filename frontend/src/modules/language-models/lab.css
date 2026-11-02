@@ -822,3 +822,35 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------- Level-specific bits ---------- */
+
+.lm-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: calc(-1 * var(--space-1));
+}
+
+.lm-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.lm-chip-btn {
+  border: none;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.lm-chip-btn:hover {
+  background: var(--color-yellow);
+  color: var(--color-ink);
+}
+
+.lm-table caption {
+  margin-bottom: var(--space-2);
+  text-align: left;
+}

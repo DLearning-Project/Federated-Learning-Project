@@ -1,172 +1,71 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useModuleState } from '../../../app/AppStateContext';
-import { formatBytes, formatInt, formatNumber, formatPercent } from '../../../components/format';
+import { formatBytes, formatNumber, formatPercent } from '../../../components/format';
 import { AssumptionsList } from '../../../components/Results';
 import { ApiErrorState, EmptyState, LoadingState, StatusMessage } from '../../../components/StatusMessage';
 import { useApiAction, type ActionState } from '../../../hooks/useApiAction';
 import { fetchPaper, simulateRound } from '../api';
 import { useLab } from '../lab/LabContext';
+import { byLevel } from '../lab/levels';
 import { Term } from '../lab/Term';
-import { ClassMixGrid, DownloadBars, SpectrumChart } from '../simulator/charts';
-import type { Level, MethodPayload, PaperResponse, SimulatorRoundInput, SimulatorRoundResponse } from '../types';
+import { ClassMixGrid, DownloadBars, METHOD_LABEL, SpectrumChart } from '../simulator/charts';
+import { classesHeld, EXPERIMENTS, payloadOf, pct, sum, type Experiment } from '../simulator/experiments';
+import { DEFAULTS, sameInput, toInput, type Settings, type Tab } from '../simulator/settings';
+import { ClientsTable, ServerCostTable, SingularValuesTable } from '../simulator/tables';
+import type { Level, MethodId, PaperResponse, SimulatorRoundInput, SimulatorRoundResponse } from '../types';
 
-type PaperAction = { state: ActionState<PaperResponse>; data?: PaperResponse; run: (input: null) => Promise<void> };
-
-/* ---------- Settings ---------- */
-
-interface Settings {
-  total_clients: number;
-  clients_per_round: number;
-  rounds: number;
-  alpha: number;
-  heterogeneous: boolean;
-  tau: number;
-  seed: number;
-  bytes_per_param: 1 | 2 | 4;
-  show_fedit: boolean;
-  show_florist: boolean;
-}
-
-const DEFAULTS: Settings = {
-  total_clients: 10,
-  clients_per_round: 3,
-  rounds: 10,
-  alpha: 0.5,
-  heterogeneous: false,
-  tau: 0.9,
-  seed: 42,
-  bytes_per_param: 4,
-  show_fedit: true,
-  show_florist: true,
+type PaperAction = {
+  state: ActionState<PaperResponse>;
+  data?: PaperResponse;
+  run: (input: null) => Promise<void>;
 };
-
-type Tab = 'accuracy' | 'spectrum' | 'download' | 'data';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'accuracy', label: 'Accuracy' },
-  { id: 'spectrum', label: 'Singular values (τ)' },
-  { id: 'download', label: 'Download cost' },
-  { id: 'data', label: 'Client data' },
-];
 
 const STEP_MS = 700;
 
-function toInput(s: Settings, round: number): SimulatorRoundInput {
-  return {
-    total_clients: s.total_clients,
-    clients_per_round: Math.min(s.clients_per_round, s.total_clients),
-    round,
-    alpha: s.alpha,
-    heterogeneous: s.heterogeneous,
-    tau: s.tau,
-    seed: s.seed,
-    bytes_per_param: s.bytes_per_param,
-  };
-}
-
-function sameInput(a: SimulatorRoundInput, b: SimulatorRoundInput): boolean {
-  return (Object.keys(b) as (keyof SimulatorRoundInput)[]).every((k) => a[k] === b[k]);
-}
-
-const pct = (x: number | null | undefined) => (x == null ? 'n/a' : x < 1e-9 ? '0%' : x < 0.001 ? '< 0.1%' : formatPercent(x));
-const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-const payloadOf = (r: SimulatorRoundResponse | undefined, m: MethodPayload['method']) => r?.results.payload.find((p) => p.method === m);
-const classesHeld = (row: number[]) => row.filter((v) => v > 0).length;
-
-/* ---------- Experiments: predict, then run (all checked against live results) ---------- */
-
-interface Experiment {
-  id: string;
-  title: string;
-  question: string;
-  options: { id: string; label: string }[];
-  tab: Tab;
-  apply: (s: Settings) => Settings;
-  verdict: (before: SimulatorRoundResponse, after: SimulatorRoundResponse) => { correct: string; explanation: string };
-}
-
-const EXPERIMENTS: Experiment[] = [
-  {
-    id: 'tau',
-    title: 'Lower the energy threshold',
-    question: 'If τ drops from 0.90 to 0.70, what happens to the global rank p that FLoRIST sends?',
-    options: [
-      { id: 'down', label: 'p shrinks or stays the same' },
-      { id: 'up', label: 'p grows' },
-    ],
-    tab: 'spectrum',
-    apply: (s) => ({ ...s, tau: 0.7 }),
-    verdict: (b, a) => ({
-      correct: a.results.p <= b.results.p ? 'down' : 'up',
-      explanation:
-        `p went from ${b.results.p} to ${a.results.p}. A lower τ needs less of the energy, so FLoRIST can stop at fewer singular values` +
-        (a.results.p === b.results.p ? '; here the same components already reach 70%.' : '.'),
-    }),
+const TAB_LABELS: Record<Tab, { beginner: string; student: string; researcher: string }> = {
+  accuracy: {
+    beginner: 'Accuracy',
+    student: 'Accuracy',
+    researcher: 'Accuracy',
   },
-  {
-    id: 'download',
-    title: 'Who downloads more?',
-    question: 'Which aggregate is larger for each client to download: exact stacking or FLoRIST?',
-    options: [
-      { id: 'stack', label: 'Exact stacking' },
-      { id: 'florist', label: 'FLoRIST' },
-      { id: 'same', label: 'They are the same size' },
-    ],
-    tab: 'download',
-    apply: (s) => s,
-    verdict: (_b, a) => {
-      const st = payloadOf(a, 'exact_stack')!;
-      const fl = payloadOf(a, 'florist')!;
-      const correct = st.download_per_client_bytes > fl.download_per_client_bytes ? 'stack' : st.download_per_client_bytes < fl.download_per_client_bytes ? 'florist' : 'same';
-      return {
-        correct,
-        explanation: `Exact stacking sends rank Σr_k = ${st.download_rank} (${formatBytes(st.download_per_client_bytes)}); FLoRIST sends rank p = ${fl.download_rank} (${formatBytes(
-          fl.download_per_client_bytes,
-        )}).`,
-      };
-    },
+  spectrum: {
+    beginner: 'What gets kept',
+    student: 'Singular values (τ)',
+    researcher: 'Spectrum σ(P), τ',
   },
-  {
-    id: 'fedit',
-    title: 'Is FedIT exact?',
-    question: 'Every client has the same rank. Does FedIT (average B, average A, then multiply) give exactly the average of the clients’ updates?',
-    options: [
-      { id: 'yes', label: 'Yes, exactly' },
-      { id: 'no', label: 'No, there is an error' },
-    ],
-    tab: 'spectrum',
-    apply: (s) => ({ ...s, heterogeneous: false, show_fedit: true }),
-    verdict: (_b, a) => {
-      const e = a.results.aggregation_error_fedit;
-      const correct = e && e.absolute > 1e-9 ? 'no' : 'yes';
-      return {
-        correct,
-        explanation:
-          correct === 'no'
-            ? `FedIT is off by ${pct(e!.relative)} of the true update this round. Multiplying the averages adds cross terms B_i A_j between different clients.`
-            : 'This round the clients happen to agree, so FedIT is exact.',
-      };
-    },
+  download: {
+    beginner: 'Download size',
+    student: 'Download cost',
+    researcher: 'Payload & server cost',
   },
-  {
-    id: 'alpha',
-    title: 'Very non-IID data',
-    question: 'Set α to 0.05. How many of the 16 classes does a typical sampled client hold?',
-    options: [
-      { id: 'most', label: 'Most of the classes' },
-      { id: 'few', label: 'Only a few classes' },
-    ],
-    tab: 'data',
-    apply: (s) => ({ ...s, alpha: 0.05 }),
-    verdict: (_b, a) => {
-      const held = a.results.sampled_clients.map((c) => classesHeld(a.results.class_counts[c])).sort((x, y) => x - y);
-      const median = held[Math.floor(held.length / 2)];
-      return {
-        correct: median <= 8 ? 'few' : 'most',
-        explanation: `The sampled clients hold ${held.join(', ')} of 16 classes. A small α makes each client's data concentrate on a few classes.`,
-      };
-    },
+  data: {
+    beginner: 'Who has what data',
+    student: 'Client data',
+    researcher: 'Partition & weights',
   },
+};
+const TAB_ORDER: Tab[] = ['accuracy', 'spectrum', 'download', 'data'];
+
+const BEGINNER_METHOD_LABEL: Record<MethodId, string> = {
+  exact_stack: 'Send everything',
+  fedit: 'Simple averaging',
+  florist: 'FLoRIST',
+};
+
+/** Plain-language version of the backend assumptions, for beginners. */
+const BEGINNER_ASSUMPTIONS = [
+  'The add-ons here are small made-up examples, not trained on real notes, so the numbers show how combining works rather than how good a chatbot gets.',
+  'The “hospitals” have made-up data in 16 topics; hospitals with more examples count for more when the server combines.',
+  'Download sizes count only the add-on, not the big model each hospital already has.',
 ];
+
+/** Paper references shown next to each result for researchers (term ids in paper_facts.json). */
+const TAB_REFS: Record<Tab, string[]> = {
+  accuracy: [],
+  spectrum: ['weighted_stacking', 'energy_threshold', 'eckart_young_bound'],
+  download: ['communication_cost'],
+  data: ['aggregation_weight'],
+};
 
 interface Prediction {
   experiment: string;
@@ -216,7 +115,7 @@ export default function SimulatorPage() {
     return () => clearTimeout(t);
   }, [playing, sim.state, current, round, settings.rounds, setRound]);
 
-  // Load paper-reported Table 3 the first time the download tab opens.
+  // Paper-reported tables load the first time the download tab opens.
   useEffect(() => {
     if (tab === 'download' && paper.state.status === 'idle') paper.run(null);
   }, [tab, paper]);
@@ -252,9 +151,15 @@ export default function SimulatorPage() {
     setPlaying(false);
     setSettings(next);
     setTab(exp.tab);
-    setPrediction({ experiment: exp.id, choice, before: current, target: toInput(next, round) });
+    setPrediction({
+      experiment: exp.id,
+      choice,
+      before: current,
+      target: toInput(next, round),
+    });
   };
 
+  const fedVisible = lvl === 'beginner' ? settings.beginner_fedit : settings.show_fedit;
   const mathVisible = lvl === 'researcher' || (lvl === 'student' && showMath);
   const r = current?.results;
 
@@ -265,8 +170,13 @@ export default function SimulatorPage() {
           <span className="eyebrow">Page 4 of 4 · Language models</span>
           <h1>FLoRIST Simulator</h1>
           <p className="muted">
-            Sample clients, give them LoRA adapters, and aggregate them three ways. Every number here is computed live by the backend on small synthetic
-            adapters.
+            {byLevel(lvl, {
+              beginner: 'Watch a server combine what many clients learned into one small update, and see what that saves and what it loses.',
+              student:
+                'Sample clients, give them LoRA adapters, and aggregate them three ways. Every number here is computed live by the backend on small synthetic adapters.',
+              researcher:
+                'One aggregation round per step: Dirichlet partition, client sampling, data-size weights, then FedIT, exact weighted stacking and FLoRIST (Algorithm 1) on synthetic 16 × 32 adapters, computed live in float64.',
+            })}
           </p>
         </div>
         <span className="pill">
@@ -279,8 +189,8 @@ export default function SimulatorPage() {
           <strong>The scenario</strong>
           <p>
             Imagine {settings.total_clients} hospitals that each want a better medical chatbot but cannot share patient notes. Each hospital trains a small
-            add-on (a LoRA adapter) on its own notes. A server combines the add-ons and sends one back to everybody. This page shows how big that download is,
-            and how much of the hospitals’ work survives the combining.
+            add-on on its own notes. A server combines the add-ons and sends one back to everybody. This page shows how big that download is, and how much of
+            the hospitals’ work survives the combining.
           </p>
         </div>
       )}
@@ -289,14 +199,14 @@ export default function SimulatorPage() {
         <Controls settings={settings} update={update} level={lvl} />
 
         <div className="lm-sim-main">
-          <Kpis result={current} settings={settings} />
+          <Kpis result={current} level={lvl} fedVisible={fedVisible} />
 
           <section className="card lm-results" aria-label="Results">
             <div className="lm-results-head">
               <div className="segmented" role="tablist" aria-label="Result views">
-                {TABS.map((t) => (
-                  <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
-                    {t.label}
+                {TAB_ORDER.map((t) => (
+                  <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
+                    {TAB_LABELS[t][lvl]}
                   </button>
                 ))}
               </div>
@@ -308,36 +218,79 @@ export default function SimulatorPage() {
 
             {tab === 'accuracy' && (
               <EmptyState>
-                <strong>Accuracy is available after the toy experiment (build step 5).</strong> The adapters on this page are synthetic, so there is no model
-                to score yet. We do not draw made-up curves. For accuracy measured in the paper, see Table 2 of the FLoRIST paper.
+                {byLevel(lvl, {
+                  beginner: (
+                    <>
+                      <strong>Coming later.</strong> The add-ons on this page are made-up examples, not trained on real text, so there is no chatbot to score
+                      yet. We will not show invented numbers.
+                    </>
+                  ),
+                  student: (
+                    <>
+                      <strong>Accuracy is available after the toy experiment (build step 5).</strong> The adapters on this page are synthetic, so there is no
+                      model to score yet. We do not draw made-up curves. For accuracy measured in the paper, see Table 2 of the FLoRIST paper.
+                    </>
+                  ),
+                  researcher: (
+                    <>
+                      <strong>Not computed: adapters are synthetic.</strong> Test accuracy per round needs local training (build step 5, toy model). Paper
+                      results: Table 2 (MMLU, TinyLlama and LLaMA-3.2-1B, homogeneous and heterogeneous ranks).
+                    </>
+                  ),
+                })}
               </EmptyState>
             )}
 
             {r && tab !== 'accuracy' && (
               <div className={sim.state.status === 'loading' ? 'lm-stale' : undefined}>
+                {lvl === 'researcher' && <Refs tab={tab} />}
                 {tab === 'spectrum' && (
-                  <>
-                    <SpectrumChart values={r.singular_values} energy={r.cumulative_energy} p={r.p} tau={current!.inputs.tau} />
+                  <div className="lm-stack">
+                    <SpectrumChart
+                      values={r.singular_values}
+                      energy={r.cumulative_energy}
+                      p={r.p}
+                      tau={current!.inputs.tau}
+                      xLabel={byLevel(lvl, {
+                        beginner: 'pieces of the update (most important first)',
+                        student: 'component (largest first)',
+                        researcher: 'i',
+                      })}
+                      plain={lvl === 'beginner'}
+                    />
                     <ul className="legend">
                       <li>
-                        <span className="swatch" style={{ background: 'var(--color-orange)' }} /> kept by FLoRIST
+                        <span className="swatch" style={{ background: 'var(--color-orange)' }} /> {lvl === 'beginner' ? 'kept' : 'kept by FLoRIST'}
                       </li>
                       <li>
-                        <span className="swatch" style={{ background: 'var(--color-chart-light)', border: '1px solid var(--color-chart-gray)' }} /> discarded
+                        <span
+                          className="swatch"
+                          style={{
+                            background: 'var(--color-chart-light)',
+                            border: '1px solid var(--color-chart-gray)',
+                          }}
+                        />{' '}
+                        {lvl === 'beginner' ? 'dropped' : 'discarded'}
                       </li>
                       <li>
-                        <span className="swatch" style={{ background: 'var(--color-ink)', height: 3 }} /> cumulative energy
+                        <span className="swatch" style={{ background: 'var(--color-ink)', height: 3 }} />{' '}
+                        {lvl === 'beginner' ? 'total detail kept so far' : 'cumulative energy'}
                       </li>
                       <li>
-                        <span className="swatch lm-swatch-dash" /> threshold τ
+                        <span className="swatch lm-swatch-dash" /> {lvl === 'beginner' ? 'target' : 'threshold τ'}
                       </li>
                     </ul>
-                  </>
+                    {lvl === 'student' && <p className="small muted">Hover a bar to see its value.</p>}
+                    {lvl === 'researcher' && <SingularValuesTable r={r} />}
+                  </div>
                 )}
-                {tab === 'download' && (
-                  <DownloadTab data={current!} settings={settings} level={lvl} paper={paper} />
+                {tab === 'download' && <DownloadTab data={current!} settings={settings} level={lvl} paper={paper} fedVisible={fedVisible} />}
+                {tab === 'data' && (
+                  <div className="lm-stack">
+                    <ClassMixGrid counts={r.class_counts} sampled={r.sampled_clients} ranks={r.all_client_ranks} />
+                    {lvl === 'researcher' && <ClientsTable r={r} />}
+                  </div>
                 )}
-                {tab === 'data' && <ClassMixGrid counts={r.class_counts} sampled={r.sampled_clients} ranks={r.all_client_ranks} />}
 
                 <p className="lm-reading">
                   <strong>Reading this:</strong> {reading(tab, current!, lvl)}
@@ -353,9 +306,18 @@ export default function SimulatorPage() {
             )}
           </section>
 
-          <Playback round={round} rounds={settings.rounds} playing={playing} onRun={runPlayback} onPause={() => setPlaying(false)} onStep={step} onReset={reset} />
+          <Playback
+            round={round}
+            rounds={settings.rounds}
+            playing={playing}
+            level={lvl}
+            onRun={runPlayback}
+            onPause={() => setPlaying(false)}
+            onStep={step}
+            onReset={reset}
+          />
 
-          {r && r.notices.length > 0 && (
+          {r && r.notices.length > 0 && lvl !== 'beginner' && (
             <StatusMessage tone="warning" title="Notes for this round">
               <ul className="lm-list">
                 {r.notices.map((n) => (
@@ -364,11 +326,17 @@ export default function SimulatorPage() {
               </ul>
             </StatusMessage>
           )}
-          {current && <AssumptionsList title="Assumptions behind these numbers" assumptions={[...current.assumptions, ...current.results.payload_assumptions]} />}
+          {current && (
+            <AssumptionsList
+              title={lvl === 'beginner' ? 'What this page simplifies' : 'Assumptions behind these numbers'}
+              assumptions={lvl === 'beginner' ? BEGINNER_ASSUMPTIONS : [...current.assumptions, ...current.results.payload_assumptions]}
+            />
+          )}
         </div>
 
         <aside className="lm-sim-side" aria-label="Experiments">
           <Experiments
+            level={lvl}
             data={data}
             current={current}
             prediction={prediction}
@@ -383,14 +351,31 @@ export default function SimulatorPage() {
             <div className="card inset lm-analogy">
               <div className="lm-kicker">Think of it like this</div>
               <p>
-                Each hospital sends a summary of what it learned. Stacking staples all the summaries together: nothing is lost, but the packet keeps growing.
-                FLoRIST rewrites them into one short summary that keeps the points most hospitals agree on (the tall bars).
+                Each hospital sends a summary of what it learned. Sending everything staples all the summaries together: nothing is lost, but the packet keeps
+                growing. FLoRIST rewrites them into one short summary that keeps the points most hospitals agree on (the tall bars).
               </p>
             </div>
           )}
         </aside>
       </div>
     </div>
+  );
+}
+
+/* ---------- Paper references (researcher) ---------- */
+
+function Refs({ tab }: { tab: Tab }) {
+  const { term, openTerm } = useLab();
+  const refs = TAB_REFS[tab].map((id) => term(id)).filter((t): t is NonNullable<typeof t> => !!t);
+  if (!refs.length) return null;
+  return (
+    <p className="lm-refs small">
+      {refs.map((t) => (
+        <button key={t.id} type="button" className="lm-chip lm-chip-btn" onClick={() => openTerm(t.id)} title={t.label}>
+          {t.label}: {t.reference}
+        </button>
+      ))}
+    </p>
   );
 }
 
@@ -415,6 +400,7 @@ function Slider({
   step,
   onChange,
   hint,
+  ends,
 }: {
   id: string;
   label: ReactNode;
@@ -425,6 +411,7 @@ function Slider({
   step: number;
   onChange: (v: number) => void;
   hint?: ReactNode;
+  ends?: [string, string];
 }) {
   return (
     <div className="lm-field">
@@ -435,22 +422,29 @@ function Slider({
         </output>
       </div>
       <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      {ends && (
+        <span className="lm-ends small muted" aria-hidden>
+          <span>{ends[0]}</span>
+          <span>{ends[1]}</span>
+        </span>
+      )}
       {hint && <span className="small muted">{hint}</span>}
     </div>
   );
 }
 
 function Controls({ settings: s, update, level }: { settings: Settings; update: (p: Partial<Settings>) => void; level: Level }) {
-  const logAlpha = Math.log10(s.alpha);
+  const beginner = level === 'beginner';
+  const researcher = level === 'researcher';
   return (
     <aside className="lm-sim-controls" aria-label="Simulation settings">
-      <Group title="Federation">
-        {level !== 'beginner' && (
+      <Group title={beginner ? 'Who takes part' : 'Federation'}>
+        {!beginner && (
           <Slider
             id="lm-total"
             label={
               <Term htmlFor="lm-total" definition="Every device or organisation that holds its own data and could take part in training.">
-                Total clients
+                {researcher ? 'Total clients K' : 'Total clients'}
               </Term>
             }
             value={s.total_clients}
@@ -465,7 +459,7 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
           id="lm-per-round"
           label={
             <Term htmlFor="lm-per-round" definition="How many clients the server picks at random to train in each round.">
-              Clients per round
+              {beginner ? 'Hospitals per round' : 'Clients per round'}
             </Term>
           }
           value={Math.min(s.clients_per_round, s.total_clients)}
@@ -491,23 +485,39 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
         />
       </Group>
 
-      <Group title="Client data">
+      <Group title={beginner ? 'Their data' : 'Client data'}>
         <Slider
           id="lm-alpha"
           label={
-            <Term htmlFor="lm-alpha" definition="Dirichlet α controls how uneven the clients' data is: small α gives each client only a few classes; large α gives everyone a similar mix.">
-              Dirichlet α
+            <Term
+              htmlFor="lm-alpha"
+              definition={
+                beginner
+                  ? 'How different the hospitals’ notes are. Very uneven: each hospital sees only a few topics. Very similar: everyone sees a bit of everything.'
+                  : "Dirichlet α controls how uneven the clients' data is: small α gives each client only a few classes; large α gives everyone a similar mix."
+              }
+            >
+              {byLevel(level, {
+                beginner: 'How different is their data?',
+                student: 'Dirichlet α',
+                researcher: 'Dirichlet α (label skew)',
+              })}
             </Term>
           }
-          value={logAlpha}
-          display={formatNumber(s.alpha, s.alpha < 1 ? 2 : 1)}
+          value={Math.log10(s.alpha)}
+          display={beginner ? alphaWords(s.alpha) : formatNumber(s.alpha, s.alpha < 1 ? 2 : 1)}
           min={-2}
           max={3}
           step={0.05}
           onChange={(v) => update({ alpha: Number(Math.pow(10, v).toPrecision(2)) })}
+          ends={beginner ? ['very uneven', 'very similar'] : undefined}
           hint={
             <>
-              More uneven ← → more similar · paper uses 0.5{' '}
+              {beginner
+                ? 'The paper uses a fairly uneven setting.'
+                : researcher
+                  ? 'Log scale, 0.01–1000 · paper: α = 0.5 (Sec. 4.1)'
+                  : 'More uneven ← → more similar · paper uses 0.5'}{' '}
               {s.alpha !== 0.5 && (
                 <button type="button" className="btn btn-ghost lm-inline-btn" onClick={() => update({ alpha: 0.5 })}>
                   reset
@@ -518,56 +528,78 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
         />
       </Group>
 
-      <Group title="LoRA ranks">
+      <Group title={beginner ? 'Add-on sizes' : 'LoRA ranks'}>
         <div className="lm-field">
-          <Term termId="heterogeneous_ranks">Client ranks</Term>
+          <Term termId="heterogeneous_ranks">{beginner ? 'Do all hospitals use the same size?' : researcher ? 'r_k' : 'Client ranks'}</Term>
           <div className="segmented lm-full" role="group" aria-label="Client ranks">
             <button type="button" aria-pressed={!s.heterogeneous} onClick={() => update({ heterogeneous: false })}>
-              Homogeneous
+              {beginner ? 'Same size' : 'Homogeneous'}
             </button>
             <button type="button" aria-pressed={s.heterogeneous} onClick={() => update({ heterogeneous: true })}>
-              Heterogeneous
+              {beginner ? 'Mixed sizes' : 'Heterogeneous'}
             </button>
           </div>
-          <span className="small muted">{s.heterogeneous ? 'Mix of ranks 1, 2 and 4 (most clients small, like the paper).' : 'Every client uses rank 4.'}</span>
+          <span className="small muted">
+            {byLevel(level, {
+              beginner: s.heterogeneous
+                ? 'Smaller hospitals use smaller add-ons, bigger ones use larger add-ons.'
+                : 'Every hospital uses the same add-on size.',
+              student: s.heterogeneous ? 'Mix of ranks 1, 2 and 4 (most clients small, like the paper).' : 'Every client uses rank 4.',
+              researcher: s.heterogeneous ? 'r_k by client id: 50% r=1, 30% r=2, 20% r=4 (heavy-tailed, cf. Sec. 4.1).' : 'r_k = 4 for all k.',
+            })}
+          </span>
         </div>
       </Group>
 
-      <Group title="Aggregation">
+      <Group title={beginner ? 'How the server combines' : 'Aggregation'}>
         <div className="lm-field" role="group" aria-label="Methods to compare">
-          <span>Methods</span>
+          <span>{beginner ? 'Compare' : 'Methods'}</span>
           <label className="lm-check">
             <input type="checkbox" checked={s.show_florist} onChange={(e) => update({ show_florist: e.target.checked })} />
             <Term termId="selected_rank">FLoRIST</Term>
           </label>
           <label className="lm-check">
-            <input type="checkbox" checked={s.show_fedit} onChange={(e) => update({ show_fedit: e.target.checked })} />
-            <Term termId="fedit">FedIT</Term>
+            <input
+              type="checkbox"
+              checked={beginner ? s.beginner_fedit : s.show_fedit}
+              onChange={(e) => update(beginner ? { beginner_fedit: e.target.checked } : { show_fedit: e.target.checked })}
+            />
+            <Term termId="fedit">{beginner ? 'Simple averaging' : 'FedIT'}</Term>
           </label>
           <label className="lm-check">
             <input type="checkbox" checked disabled />
-            <Term termId="weighted_stacking">Exact stacking</Term> <span className="small muted">(reference)</span>
+            <Term termId="weighted_stacking">{beginner ? 'Send everything' : 'Exact stacking'}</Term>
+            {!beginner && <span className="small muted">(reference)</span>}
           </label>
         </div>
         <Slider
           id="lm-tau"
           label={
             <Term termId="energy_threshold" htmlFor="lm-tau">
-              Energy threshold τ
+              {byLevel(level, {
+                beginner: 'How much detail to keep',
+                student: 'Energy threshold τ',
+                researcher: 'τ',
+              })}
             </Term>
           }
           value={s.tau}
-          display={s.tau.toFixed(2)}
+          display={beginner ? `${Math.round(s.tau * 100)}%` : s.tau.toFixed(2)}
           min={0.5}
           max={1}
           step={0.01}
           onChange={(v) => update({ tau: v })}
-          hint="FLoRIST only · paper default 0.90"
+          ends={beginner ? ['send less', 'keep more detail'] : undefined}
+          hint={byLevel(level, {
+            beginner: 'The paper keeps 90%.',
+            student: 'FLoRIST only · paper default 0.90',
+            researcher: 'FLoRIST only · paper: τ = 0.90 and tuned τ* (Sec. 4.2)',
+          })}
         />
       </Group>
 
-      {level !== 'beginner' && (
-        <Group title="Run settings" defaultOpen={level === 'researcher'}>
+      {!beginner && (
+        <Group title="Run settings" defaultOpen={researcher}>
           <div className="lm-field">
             <label htmlFor="lm-seed">Random seed</label>
             <input
@@ -599,6 +631,14 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
   );
 }
 
+function alphaWords(alpha: number): string {
+  if (alpha < 0.1) return 'very uneven';
+  if (alpha < 1) return 'uneven';
+  if (alpha < 10) return 'mixed';
+  if (alpha < 100) return 'similar';
+  return 'very similar';
+}
+
 /* ---------- KPIs ---------- */
 
 function Kpi({ label, value, sub }: { label: ReactNode; value: ReactNode; sub: ReactNode }) {
@@ -611,37 +651,106 @@ function Kpi({ label, value, sub }: { label: ReactNode; value: ReactNode; sub: R
   );
 }
 
-function Kpis({ result, settings }: { result: SimulatorRoundResponse | undefined; settings: Settings }) {
+function Kpis({ result, level, fedVisible }: { result: SimulatorRoundResponse | undefined; level: Level; fedVisible: boolean }) {
   const r = result?.results;
   const fl = payloadOf(result, 'florist');
   const st = payloadOf(result, 'exact_stack');
   const dash = '—';
+  if (!r || !fl || !st) {
+    return (
+      <div className="lm-kpis">
+        <Kpi label="Waiting for the first result" value={dash} sub="The backend computes every number on this page." />
+      </div>
+    );
+  }
+  const sigma = sum(r.client_ranks);
+  const ratio = formatNumber(st.download_per_client_bytes / Math.max(fl.download_per_client_bytes, 1), 1);
+  const fe = r.aggregation_error_fedit;
+  const tau = result!.inputs.tau;
+  const b = result!.inputs.bytes_per_param;
+
+  if (level === 'beginner') {
+    return (
+      <div className="lm-kpis">
+        <Kpi
+          label={<Term termId="selected_rank">Pieces kept</Term>}
+          value={`${r.p} of ${sigma}`}
+          sub="FLoRIST keeps the most important pieces of the combined update and drops the rest."
+        />
+        <Kpi
+          label="Each client downloads"
+          value={formatBytes(fl.download_per_client_bytes)}
+          sub={`${ratio}× less than sending everything (${formatBytes(st.download_per_client_bytes)})`}
+        />
+        <Kpi label="Lost by compressing" value={pct(r.reconstruction_error.relative)} sub="How far FLoRIST’s small update is from the full one." />
+        {fedVisible && (
+          <Kpi
+            label="Error from simple averaging"
+            value={fe ? pct(fe.relative) : 'not possible'}
+            sub={
+              fe
+                ? 'Averaging the two parts separately mixes up different hospitals’ work.'
+                : 'Hospitals use different add-on sizes, so they cannot be averaged.'
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (level === 'researcher') {
+    return (
+      <div className="lm-kpis">
+        <Kpi
+          label={<Term termId="selected_rank">p</Term>}
+          value={r.p}
+          sub={`max r_k = ${Math.max(...r.client_ranks)} · Σr_k = ${sigma} · τ = ${tau.toFixed(2)}`}
+        />
+        <Kpi
+          label={<Term termId="communication_cost">download / client</Term>}
+          value={formatBytes(fl.download_per_client_bytes)}
+          sub={`p(m+n)·b = ${r.p}·${r.m + r.n}·${b} · stack Σr_k(m+n)·b = ${formatBytes(st.download_per_client_bytes)}`}
+        />
+        <Kpi
+          label={<Term termId="eckart_young_bound">‖ΔW − B_gA_g‖_F</Term>}
+          value={r.reconstruction_error.absolute.toPrecision(3)}
+          sub={`rel ${pct(r.reconstruction_error.relative)} · = √Σ_{i>p} σ_i² = ${r.eq5_bound.toPrecision(3)} (Eq. 5)`}
+        />
+        {fedVisible && (
+          <Kpi
+            label={<Term termId="cross_term">‖ΔW − B̄Ā‖_F (FedIT)</Term>}
+            value={fe ? fe.absolute.toPrecision(3) : 'undefined'}
+            sub={fe ? `rel ${pct(fe.relative)} · stacking: ${r.aggregation_error_exact_stack.absolute.toExponential(1)}` : 'r_k differ: Σw_kB_k is not defined'}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="lm-kpis">
       <Kpi
         label={<Term termId="selected_rank">Global rank p</Term>}
-        value={r ? r.p : dash}
-        sub={r ? `max r_k = ${Math.max(...r.client_ranks)} · Σr_k = ${sum(r.client_ranks)}` : 'waiting for results'}
+        value={r.p}
+        sub={`The smallest rank whose singular values hold ${Math.round(tau * 100)}% of the energy (max r_k = ${Math.max(...r.client_ranks)}, Σr_k = ${sigma}).`}
       />
       <Kpi
         label={<Term termId="communication_cost">Download per client</Term>}
-        value={fl ? formatBytes(fl.download_per_client_bytes) : dash}
-        sub={
-          fl && st
-            ? `FLoRIST vs ${formatBytes(st.download_per_client_bytes)} for exact stacking (${formatNumber(st.download_per_client_bytes / Math.max(fl.download_per_client_bytes, 1), 1)}× less)`
-            : 'FLoRIST, per round'
-        }
+        value={formatBytes(fl.download_per_client_bytes)}
+        sub={`FLoRIST sends p(m+n) numbers: ${ratio}× less than exact stacking’s ${formatBytes(st.download_per_client_bytes)}.`}
       />
       <Kpi
         label={<Term termId="eckart_young_bound">FLoRIST error</Term>}
-        value={r ? pct(r.reconstruction_error.relative) : dash}
-        sub={r ? `of the exact update · equals the Eq. 5 bound (${formatNumber(r.eq5_bound, 3)})` : 'relative to exact stacking'}
+        value={pct(r.reconstruction_error.relative)}
+        sub="Only the discarded singular values cause error, so it equals the Eq. 5 bound."
       />
-      <Kpi
-        label={<Term termId="cross_term">FedIT error</Term>}
-        value={!settings.show_fedit ? 'hidden' : r ? (r.aggregation_error_fedit ? pct(r.aggregation_error_fedit.relative) : 'n/a') : dash}
-        sub={!settings.show_fedit ? 'turn FedIT on to compare' : r && !r.aggregation_error_fedit ? 'mixed ranks: FedIT cannot average them' : 'of the exact update (cross terms)'}
-      />
+      {fedVisible && (
+        <Kpi
+          label={<Term termId="cross_term">FedIT error</Term>}
+          value={fe ? pct(fe.relative) : 'n/a'}
+          sub={fe ? 'Multiplying averaged factors adds cross terms between clients.' : 'Mixed ranks: FedIT cannot average them.'}
+        />
+      )}
     </div>
   );
 }
@@ -653,33 +762,34 @@ function DownloadTab({
   settings,
   level,
   paper,
+  fedVisible,
 }: {
   data: SimulatorRoundResponse;
   settings: Settings;
   level: Level;
   paper: PaperAction;
+  fedVisible: boolean;
 }) {
   const r = data.results;
-  const shown = r.payload.filter((p) => (p.method === 'fedit' ? settings.show_fedit : p.method === 'florist' ? settings.show_florist : true));
-  const table3 = paper.data?.reported_results.table3;
+  const shown = r.payload.filter((p) => (p.method === 'fedit' ? fedVisible : p.method === 'florist' ? settings.show_florist : true));
+  const reported = paper.data?.reported_results;
+  const table3 = reported?.table3;
   return (
     <div className="lm-stack">
-      <DownloadBars payload={shown} />
-      {level !== 'beginner' && (
-        <p className="small muted">
-          Server work this round (estimated operations): FLoRIST {formatInt(r.server_cost.florist_ops)} vs SVD of the full ΔW {formatInt(r.server_cost.direct_svd_ops)}
-          {r.server_cost.fedit_ops != null ? ` vs FedIT ${formatInt(r.server_cost.fedit_ops)}` : ''}.
-        </p>
-      )}
+      <DownloadBars payload={shown} labels={level === 'beginner' ? BEGINNER_METHOD_LABEL : METHOD_LABEL} showRank={level !== 'beginner'} />
+      {level === 'researcher' && <ServerCostTable r={r} table4={reported?.table4} />}
       <div className="lm-paper">
         <div className="lm-paper-head">
           <span className="badge">Paper-reported</span>
-          <strong>{table3?.reference ?? 'Table 3'}</strong>
-          <span className="small muted">Not computed here: these are the paper’s numbers, for scale.</span>
+          <strong>{level === 'beginner' ? 'At real scale' : (table3?.reference ?? 'Table 3')}</strong>
+          <span className="small muted">
+            {level === 'beginner' ? 'From the FLoRIST paper, for a real chatbot model.' : 'Not computed here: these are the paper’s numbers, for scale.'}
+          </span>
         </div>
         {paper.state.status === 'loading' && <LoadingState label="Loading paper values…" />}
         {paper.state.status === 'error' && <ApiErrorState error={paper.state.error} onRetry={() => paper.run(null)} />}
-        {table3 && (
+        {table3 && level === 'beginner' && <BeginnerScale rows={table3.rows} />}
+        {table3 && level !== 'beginner' && (
           <>
             <p className="small">{table3.caption}</p>
             <div className="lm-table-wrap">
@@ -702,11 +812,23 @@ function DownloadTab({
                 </tbody>
               </table>
             </div>
-            {level !== 'beginner' && <p className="small muted">{table3.setup}</p>}
+            {level === 'researcher' && <p className="small muted">{table3.setup}</p>}
           </>
         )}
       </div>
     </div>
+  );
+}
+
+function BeginnerScale({ rows }: { rows: { method: string; download_mb: number }[] }) {
+  const full = rows.find((x) => x.method === 'Full FT');
+  const flo = rows.find((x) => x.method.startsWith('FLoRIST [τ=0.9'));
+  if (!full || !flo) return null;
+  return (
+    <p>
+      Sending the whole model back to the clients would take about <strong>{formatNumber(full.download_mb, 0)} MB</strong>. FLoRIST sends about{' '}
+      <strong>{formatNumber(flo.download_mb, 1)} MB</strong>, roughly {formatNumber(full.download_mb / flo.download_mb, 0)} times less.
+    </p>
   );
 }
 
@@ -717,27 +839,49 @@ function reading(tab: Tab, d: SimulatorRoundResponse, level: Level): string {
   const sigma = sum(r.client_ranks);
   if (tab === 'spectrum') {
     const kept = r.p > 0 ? r.cumulative_energy[r.p - 1] : 0;
-    if (level === 'beginner')
-      return `Each bar is one direction in which the clients changed the model; tall bars matter most. FLoRIST keeps the ${r.p} orange bar${r.p === 1 ? '' : 's'}, which hold ${formatPercent(
+    return byLevel(level, {
+      beginner: `Each bar is one piece of what the clients learned together; tall bars matter most. FLoRIST keeps the ${r.p} orange bar${
+        r.p === 1 ? '' : 's'
+      }, which hold ${formatPercent(kept)} of the total, and drops the rest.`,
+      student: `The ${r.singular_values.length} bars are the singular values of the weighted average update ΔW. The first ${r.p} hold ${formatPercent(
         kept,
-      )} of the total, and drops the rest.`;
-    return `The ${r.singular_values.length} bars are the singular values of the weighted average update ΔW. The first ${r.p} hold ${formatPercent(
-      kept,
-    )} of the energy, which meets τ = ${d.inputs.tau.toFixed(2)}, so FLoRIST sends rank ${r.p} instead of Σr_k = ${sigma}.`;
+      )} of the energy, which meets τ = ${d.inputs.tau.toFixed(2)}, so FLoRIST sends rank ${r.p} instead of Σr_k = ${sigma}.`,
+      researcher: `rank(ΔW) ≤ min(m, n, Σr_k) = ${Math.min(r.m, r.n, sigma)}; ${r.singular_values.length} singular values shown. E(p) = ${formatPercent(
+        kept,
+        2,
+      )} ≥ τ = ${d.inputs.tau.toFixed(2)} at p = ${r.p}. σ(P) equals σ(ΔW) because B_stack and A_stack factor ΔW exactly.`,
+    });
   }
   if (tab === 'download') {
     const fl = payloadOf(d, 'florist')!;
     const st = payloadOf(d, 'exact_stack')!;
     const fe = payloadOf(d, 'fedit');
-    return `Each client downloads ${formatBytes(fl.download_per_client_bytes)} with FLoRIST (rank ${fl.download_rank}) and ${formatBytes(
-      st.download_per_client_bytes,
-    )} with exact stacking (rank ${st.download_rank}).${fe ? ` FedIT sends ${formatBytes(fe.download_per_client_bytes)}, but its average is not exact.` : ''}`;
+    return byLevel(level, {
+      beginner: `Each client downloads ${formatBytes(fl.download_per_client_bytes)} with FLoRIST, versus ${formatBytes(
+        st.download_per_client_bytes,
+      )} if the server sent everything.`,
+      student: `Each client downloads ${formatBytes(fl.download_per_client_bytes)} with FLoRIST (rank ${fl.download_rank}) and ${formatBytes(
+        st.download_per_client_bytes,
+      )} with exact stacking (rank ${st.download_rank}).${fe ? ` FedIT sends ${formatBytes(fe.download_per_client_bytes)}, but its average is not exact.` : ''}`,
+      researcher: `Per client per round: stack ${st.download_rank}(m+n), FLoRIST ${fl.download_rank}(m+n)${
+        fe ? `, FedIT ${fe.download_rank}(m+n)` : ''
+      } parameters at ${d.inputs.bytes_per_param} B each. Upload is r_k(m+n) for every method. Total upload this round: ${formatBytes(fl.upload_total_bytes)}.`,
+    });
   }
   const held = r.sampled_clients.map((c) => classesHeld(r.class_counts[c]));
   const avg = held.length ? sum(held) / held.length : 0;
-  return `Rows are clients and columns are the 16 classes; darker cells hold more examples. With α = ${formatNumber(d.inputs.alpha, 2)}, this round's ${
-    r.sampled_clients.length
-  } sampled clients (●) hold ${formatNumber(avg, 1)} classes on average, and they are weighted by how many examples they have.`;
+  return byLevel(level, {
+    beginner: `Each row is one hospital and each column is one topic; darker means more examples. The highlighted rows (●) take part this round and have ${formatNumber(
+      avg,
+      1,
+    )} of the 16 topics on average. Hospitals with more notes count for more when the server combines.`,
+    student: `Rows are clients and columns are the 16 classes; darker cells hold more examples. With α = ${formatNumber(d.inputs.alpha, 2)}, this round's ${
+      r.sampled_clients.length
+    } sampled clients (●) hold ${formatNumber(avg, 1)} classes on average, and they are weighted by how many examples they have.`,
+    researcher: `Per-class Dirichlet(α = ${formatNumber(d.inputs.alpha, 3)}) split of 16 × 60 samples over K = ${r.class_counts.length} clients. w_k = n_k / Σ n_j over the ${
+      r.sampled_clients.length
+    } sampled clients${r.sample_counts.some((n) => n === 0) ? '; clients with n_k = 0 get w_k = 0' : ''}.`,
+  });
 }
 
 function MathBox({ tab, data }: { tab: Tab; data: SimulatorRoundResponse }) {
@@ -781,6 +925,7 @@ function Playback({
   round,
   rounds,
   playing,
+  level,
   onRun,
   onPause,
   onStep,
@@ -789,6 +934,7 @@ function Playback({
   round: number;
   rounds: number;
   playing: boolean;
+  level: Level;
   onRun: () => void;
   onPause: () => void;
   onStep: () => void;
@@ -822,7 +968,13 @@ function Playback({
         </span>
       </div>
       <p className="small muted lm-full-row">
-        Each round samples a new set of clients and aggregates their adapters. The adapters are synthetic, so nothing is trained between rounds yet.
+        {byLevel(level, {
+          beginner: 'Each round picks different hospitals. The add-ons are made-up examples, so they do not improve from round to round yet.',
+          student:
+            'Each round samples a new set of clients and aggregates their adapters. The adapters are synthetic, so nothing is trained between rounds yet.',
+          researcher:
+            'Rounds re-sample clients (seed, t); adapters are fixed synthetic draws per client, with no local training or global-model carry-over yet (step 5).',
+        })}
       </p>
     </div>
   );
@@ -831,6 +983,7 @@ function Playback({
 /* ---------- Experiments ---------- */
 
 function Experiments({
+  level,
   data,
   current,
   prediction,
@@ -838,6 +991,7 @@ function Experiments({
   setActiveExp,
   onPredict,
 }: {
+  level: Level;
   data: SimulatorRoundResponse | undefined;
   current: SimulatorRoundResponse | undefined;
   prediction: Prediction | null;
@@ -846,34 +1000,38 @@ function Experiments({
   onPredict: (exp: Experiment, choice: string) => void;
 }) {
   const exp = EXPERIMENTS.find((e) => e.id === activeExp) ?? EXPERIMENTS[0];
+  const words = byLevel(level, exp.wording);
   const mine = prediction?.experiment === exp.id ? prediction : null;
   const after = mine && data && sameInput(data.inputs, mine.target) ? data : undefined;
-  const verdict = mine && after ? exp.verdict(mine.before, after) : null;
+  const verdict = mine && after ? exp.verdict(mine.before, after, level) : null;
 
   return (
     <>
       <div className="card lm-predict">
         <div className="lm-kicker">Predict, then run</div>
-        <strong>{exp.title}</strong>
-        <p>{exp.question}</p>
+        <strong>{words.title}</strong>
+        <p>{words.question}</p>
         <div className="lm-options" role="radiogroup" aria-label="Your prediction">
-          {exp.options.map((o) => (
+          {exp.optionIds.map((id) => (
             <button
-              key={o.id}
+              key={id}
               type="button"
               role="radio"
               className="choice"
-              aria-checked={mine?.choice === o.id}
+              aria-checked={mine?.choice === id}
               disabled={!current || !!mine}
-              onClick={() => onPredict(exp, o.id)}
+              onClick={() => onPredict(exp, id)}
             >
-              {o.label}
+              {words.options[id]}
             </button>
           ))}
         </div>
         {mine && !verdict && <LoadingState label="Running…" />}
         {verdict && (
-          <StatusMessage tone={verdict.correct === mine!.choice ? 'success' : 'warning'} title={verdict.correct === mine!.choice ? 'You called it' : 'Not this time'}>
+          <StatusMessage
+            tone={verdict.correct === mine!.choice ? 'success' : 'warning'}
+            title={verdict.correct === mine!.choice ? 'You called it' : 'Not this time'}
+          >
             {verdict.explanation}
           </StatusMessage>
         )}
@@ -889,7 +1047,7 @@ function Experiments({
           {EXPERIMENTS.map((e) => (
             <li key={e.id}>
               <button type="button" aria-current={e.id === exp.id ? 'true' : undefined} onClick={() => setActiveExp(e.id)}>
-                {e.title}
+                {byLevel(level, e.wording).title}
               </button>
             </li>
           ))}
@@ -899,4 +1057,3 @@ function Experiments({
     </>
   );
 }
-

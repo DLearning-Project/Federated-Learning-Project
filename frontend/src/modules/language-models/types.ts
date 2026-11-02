@@ -121,11 +121,30 @@ export interface Table3Row {
   download_mb: number;
 }
 
+export interface Table4Row {
+  model: string;
+  dataset: string;
+  client_config: string;
+  method: string;
+  server_flops: number;
+}
+
 export interface PaperResponse {
   provenance: 'paper_reported';
   paper: { title: string; authors: string[]; venue: string; code_url: string };
   reported_results: {
-    table3: { reference: string; caption: string; setup: string; rows: Table3Row[] };
+    table3: {
+      reference: string;
+      caption: string;
+      setup: string;
+      rows: Table3Row[];
+    };
+    table4: {
+      reference: string;
+      caption: string;
+      setup: string;
+      rows: Table4Row[];
+    };
     [table: string]: unknown;
   };
 }
