@@ -19,11 +19,19 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Acoustics training: raw audio and model weights stay out of Git
+training/acoustics/data/
+training/acoustics/checkpoints/
+*.pth
+*.pt
+*.ckpt
+
 # Personal Claude Code settings
 .claude/settings.local.json
 
 # Project brief (kept local)
 /instructions.md
+/PROJECT_CONTEXT
 
 # Editors and OS
 .DS_Store

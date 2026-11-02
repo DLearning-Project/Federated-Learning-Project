@@ -1,0 +1,26 @@
+# Direct dependencies for offline acoustics training (Python 3.12).
+# Full transitive pins: requirements.lock.txt. Install steps: README.md.
+#
+# CUDA 13.0 wheel: needs an NVIDIA driver that supports CUDA >= 13.0
+# (nvidia-smi "CUDA Version"). Other machines: pick the matching index from
+# https://pytorch.org/get-started/locally/ and record the change in the run log.
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.14.1+cu130
+
+# Audio I/O, resampling, and PANN's in-model log-Mel front end
+soundfile==0.14.0
+soxr==1.1.0
+librosa==1.0.0
+torchlibrosa==0.1.0
+
+# Data, metrics, plots, configs
+numpy==2.5.4
+scipy==1.18.1
+pandas==3.1.0
+scikit-learn==1.9.1
+matplotlib==3.11.2
+PyYAML==6.0.3
+tqdm==4.70.1
+
+# Tests
+pytest==9.2.0

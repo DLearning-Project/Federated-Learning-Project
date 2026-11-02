@@ -19,7 +19,8 @@ class StrictModel(BaseModel):
 
 
 class CalcEnvelope(BaseModel, Generic[InputT, ResultT]):
-    mode: Literal["illustrative"] = "illustrative"
+    # "illustrative": toy or synthetic numbers. "measured": computed from real data.
+    mode: Literal["illustrative", "measured"] = "illustrative"
     inputs: InputT
     results: ResultT
     units: dict[str, str]
