@@ -26,8 +26,8 @@ calculation or a spectrogram computed from audio (see "Done so far").
 | --- | --- | --- |
 | 0 | Inspect repository, GPU and model/dataset sources | Done (2026-10-28) |
 | 1 | Reproducible Python environment with GPU PyTorch | Done (2026-10-28, commit `b035139`) |
-| — | Web app: spectrogram explorer (backend + frontend) | Backend done (`cda9c87`); frontend done, not yet committed |
-| 2 | Dataset audit and leakage-safe splits | **Next.** Blocked on getting the full dataset |
+| — | Web app: spectrogram explorer (backend + frontend) | Done (backend `cda9c87`, frontend `cc50fc3`) |
+| 2 | Dataset audit and leakage-safe splits | **Next.** Full dataset download in progress |
 | 3 | Centralized baseline | Not started |
 | 4 | FedAvg, IID and non-IID | Not started |
 | 5 | Show measured results on the web app | Not started |
@@ -181,7 +181,7 @@ into `training/acoustics/data/qiandaoear22/` (gitignored). Inspected
 | Folder | Files | Format | Notes |
 | --- | --- | --- | --- |
 | `speedboat_target` | 10 | 52,734 Hz, mono, 32-bit, 3.0 s | One clip each from 10 timestamps |
-| `speedboat_other` | 10 | 52,734 Hz, mono, 32-bit, 3.0 s | 6 are named "… - 副本" ("copy"), but none matches a file in the folder: they are distinct clips |
+| `speedboat_other` | 10 | 52,734 Hz, mono, 32-bit, 3.0 s | 6 are named "… - 副本" ("copy"). None matches another file among these 10, but their originals may be in the full folder: unconfirmed until the audit |
 | `noise/data0001`, `noise/data0002` | 7 | 52,734 Hz, mono, 24-bit, 300.9 s | Full 5-minute recordings, not 3-second records |
 
 **How this differs from the official documentation** (`QiandaoEar22_documentations.pdf`):
@@ -200,9 +200,10 @@ into `training/acoustics/data/qiandaoear22/` (gitignored). Inspected
 code (the explorer, `audit.py`, `dataset.py`, the overfit test). Do **not**
 train reported models or publish results from them. Before Phase 2 proper:
 
-- Find out who published the OneDrive link. If it is the dataset authors'
-  official mirror, record it as the source; otherwise get the data from the
-  official website or IEEE DataPort.
+- ~~Find out who published the OneDrive link.~~ Answered (2026-11-01): it is
+  the personal OneDrive of Xiaoyang Du (UCAS account `duxiaoyang22`), a
+  citation author of the dataset (Shanghai Acoustics Laboratory, CAS). Record
+  it as an author-hosted source, not an official repository.
 - IEEE DataPort needs an account and often a subscription. Many universities
   provide institutional access: check with the library or the course
   instructor.
@@ -217,9 +218,11 @@ calibrated. Resampling to 32 kHz also discards 16–25.8 kHz.
 ## Known issues to fix
 
 - `backend/app/modules/acoustics/clips.py` skips every file named "副本" as a
-  duplicate. In this folder they are distinct clips, so 6 of the 10
-  "other vessel" clips are hidden. Fix during Phase 2: skip a copy only if it is
-  byte-identical to another file.
+  duplicate. In the 10-file sample none of them matches another file, so 6 of
+  the 10 "other vessel" clips are hidden; whether that holds for the full
+  folder is unconfirmed. Fix during Phase 2: skip a copy only if it is
+  byte-identical to its original, and parse its name without the suffix so it
+  keeps its recording timestamp.
 
 ## Run records (required for every training run)
 
