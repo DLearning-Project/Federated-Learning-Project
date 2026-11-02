@@ -58,17 +58,32 @@ export function MathBlock({ tex, label }: { tex: string; label?: string }) {
       if (width <= 0 || width === lastWidth) return;
       lastWidth = width;
       inner.style.fontSize = '';
-      const over = box.scrollWidth - width;
-      if (over > 1) {
-        const style = getComputedStyle(box);
-        const avail = width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-        inner.style.fontSize = `${Math.max(MIN_SCALE, avail / (avail + over))}em`;
+      const style = getComputedStyle(box);
+      const avail = width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      // KaTeX does not shrink exactly in proportion, so re-measure a few times.
+      let scale = 1;
+      for (let pass = 0; pass < 4; pass++) {
+        const over = box.scrollWidth - width;
+        if (over <= 1 || scale <= MIN_SCALE) break;
+        scale = Math.max(MIN_SCALE, scale * (avail / (avail + over)) - 0.005);
+        inner.style.fontSize = `${scale}em`;
       }
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(box);
-    return () => ro.disconnect();
+    // KaTeX's fonts can finish loading after the first measurement, which makes
+    // the formula wider without resizing the box, so measure again then.
+    let live = true;
+    document.fonts?.ready.then(() => {
+      if (!live) return;
+      lastWidth = -1;
+      fit();
+    });
+    return () => {
+      live = false;
+      ro.disconnect();
+    };
   }, [tex]);
 
   return (

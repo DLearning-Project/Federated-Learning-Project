@@ -758,7 +758,10 @@
   gap: var(--space-2);
 }
 
+/* The shared .choice is a flex column, which would put each piece of a sentence
+   with inline math (text, formula, text) on its own line. Lay it out as text. */
 .lm-options .choice {
+  display: block;
   font-size: var(--text-small);
 }
 
@@ -774,7 +777,10 @@
   padding-left: 1.25rem;
 }
 
+/* Block, so the list number lines up with the first line of a wrapped title
+   (an inline-block button aligns the number with its last line). */
 .lm-experiments button {
+  display: block;
   padding: var(--space-1) 0;
   border: none;
   background: none;

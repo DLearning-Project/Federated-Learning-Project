@@ -49,7 +49,7 @@ export const EXPERIMENTS: Experiment[] = [
       },
       researcher: {
         title: '$\\tau$ sweep: $0.90 \\to 0.70$',
-        question: 'Given $$p = \\min\\Bigl\\{ j : \\frac{\\sum_{i \\le j} \\sigma_i^2}{\\sum_i \\sigma_i^2} \\ge \\tau \\Bigr\\},$$ lowering $\\tau$ to 0.70 makes $p$…',
+        question: 'Given $${p = \\min\\Bigl\\{ j : \\frac{\\sum_{i \\le j} \\sigma_i^2}{\\sum_i \\sigma_i^2} \\ge \\tau \\Bigr\\}},$$ lowering $\\tau$ to 0.70 makes $p$…',
         options: { down: 'non-increasing', up: 'strictly larger' },
       },
     },
@@ -185,7 +185,7 @@ export const EXPERIMENTS: Experiment[] = [
       },
       researcher: {
         title: 'Dirichlet $\\alpha = 0.05$',
-        question: 'Per class, (q_1…q_K) ~ Dir(0.05). Median number of classes held by a sampled client:',
+        question: 'Per class, $(q_1, \\dots, q_K) \\sim \\mathrm{Dir}(0.05)$. Median number of classes held by a sampled client:',
         options: { most: '$> 8$ of 16', few: '$\\le 8$ of 16' },
       },
     },
