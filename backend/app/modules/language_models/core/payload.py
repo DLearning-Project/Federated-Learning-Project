@@ -12,23 +12,23 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 PAYLOAD_ASSUMPTIONS = [
-    "One adapted weight matrix W (m x n); each adapter pair has r(m + n) numbers.",
-    "Every participating client uploads its own B_k and A_k: r_k(m + n) numbers.",
+    r"One adapted weight matrix $W$ ($m \times n$); each adapter pair has $r(m + n)$ numbers.",
+    r"Every participating client uploads its own $B_k$ and $A_k$: $r_k(m + n)$ numbers.",
     "Every participating client downloads the same global adapters once per round.",
-    "FedIT downloads the averaged pair at the common rank r: r(m + n) numbers.",
-    "Exact weighted stacking (reference) downloads the stack: (sum of r_k)(m + n) numbers.",
-    "FLoRIST downloads the thresholded pair: p(m + n) numbers.",
-    "Bytes = numbers x bytes per number. 1 MB = 1,000,000 bytes (decimal).",
+    r"FedIT downloads the averaged pair at the common rank $r$: $r(m + n)$ numbers.",
+    r"Exact weighted stacking (reference) downloads the stack: $\left(\sum_k r_k\right)(m + n)$ numbers.",
+    r"FLoRIST downloads the thresholded pair: $p(m + n)$ numbers.",
+    "Bytes = numbers × bytes per number. 1 MB = 1,000,000 bytes (decimal).",
     "Not counted: the one-time base model download, the aggregation weights, protocol overhead, compression or encryption.",
 ]
 
 SERVER_COST_ASSUMPTIONS = [
     "Estimated operation counts, not measurements.",
-    "A matrix product (a x b)(b x c) counts 2abc operations.",
-    "A thin SVD of an a x b matrix counts a·b·min(a, b) operations (leading order only; real SVDs cost a constant multiple more).",
-    "FedIT: weighted sums of the K pairs of factors.",
-    "FLoRIST: SVDs of both stacks, Q, P, SVD of P, and building B_g and A_g (Eqs. 1-3).",
-    "Direct reference: forming delta_W from the stack and taking its SVD, for comparison only.",
+    r"A matrix product $(a \times b)(b \times c)$ counts $2abc$ operations.",
+    r"A thin SVD of an $a \times b$ matrix counts $ab \min(a, b)$ operations (leading order only; real SVDs cost a constant multiple more).",
+    r"FedIT: weighted sums of the $K$ pairs of factors.",
+    r"FLoRIST: SVDs of both stacks, $Q$, $P$, SVD of $P$, and building $B_g$ and $A_g$ (Eqs. 1–3).",
+    r"Direct reference: forming $\Delta W$ from the stack and taking its SVD, for comparison only.",
 ]
 
 

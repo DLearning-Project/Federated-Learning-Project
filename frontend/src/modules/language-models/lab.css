@@ -1,0 +1,955 @@
+/*
+ * FLoRIST Learning Lab (language-models module only). Every class is prefixed
+ * lm- and uses the team tokens from styles/tokens.css; no new fonts or colors.
+ */
+
+.lm-lab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.lm-lab.lm-wide .page {
+  max-width: 92rem;
+}
+
+/* ---------- Toolbar: page path, level, glossary ---------- */
+
+.lm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: 92rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.lm-path {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.lm-path ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lm-path-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-small);
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.lm-path-step:hover {
+  color: var(--color-ink);
+}
+
+.lm-path-step.current {
+  color: var(--color-ink);
+  font-weight: 600;
+  border-bottom-color: var(--color-yellow);
+}
+
+.lm-path-num {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  font-size: 0.85rem;
+}
+
+.lm-path-step.current .lm-path-num {
+  background: var(--color-yellow);
+  border-color: var(--color-yellow);
+  color: var(--color-ink);
+}
+
+.lm-path-step.done .lm-path-num {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+  color: var(--color-surface);
+}
+
+.lm-path-where {
+  padding-left: var(--space-3);
+}
+
+.lm-toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---------- Terms, tooltips, drawer ---------- */
+
+.lm-term {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.lm-term-label {
+  text-decoration: underline dotted var(--color-muted);
+  text-underline-offset: 0.2em;
+  cursor: help;
+}
+
+.lm-help {
+  display: inline-grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.lm-help:hover,
+.lm-help:focus-visible {
+  background: var(--color-yellow);
+  border-color: var(--color-yellow);
+  color: var(--color-ink);
+}
+
+.lm-tooltip {
+  /* Rendered into document.body and placed by Term.tsx, so no card can clip it. */
+  position: fixed;
+  z-index: 60;
+  display: block;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-ink);
+  color: var(--color-surface);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: var(--leading-body);
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.lm-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(28rem, 100vw);
+  padding: var(--space-5);
+  overflow-y: auto;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card), -8px 0 24px rgb(0 0 0 / 0.08);
+}
+
+.lm-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.lm-drawer-head h2 {
+  font-size: var(--text-card-heading);
+}
+
+.lm-icon-btn {
+  min-width: 2.75rem;
+  padding: 0;
+}
+
+.lm-chip {
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  background: var(--color-bg);
+  font-size: var(--text-small);
+  color: var(--color-orange-text);
+  font-weight: 600;
+}
+
+.lm-kicker {
+  margin-bottom: var(--space-1);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.lm-analogy {
+  border-left: 3px solid var(--color-orange);
+}
+
+.lm-drawer .lm-analogy {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.lm-link-btn {
+  align-self: flex-start;
+  min-height: 0;
+  padding: var(--space-1) 0;
+  color: var(--color-orange-text);
+  font-weight: 600;
+}
+
+.lm-inline-btn {
+  min-height: 0;
+  padding: 0 var(--space-1);
+  font-size: var(--text-small);
+  color: var(--color-orange-text);
+}
+
+.lm-glossary {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lm-glossary button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-3) 0;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lm-glossary button:hover strong {
+  text-decoration: underline;
+}
+
+/* ---------- Welcome modal ---------- */
+
+.lm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgb(36 36 36 / 0.45);
+}
+
+.lm-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(46rem, 100%);
+  max-height: calc(100vh - 2 * var(--space-4));
+  overflow-y: auto;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.lm-level-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.lm-level-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lm-level-card:hover,
+.lm-level-card:focus-visible {
+  border-color: var(--color-ink);
+  box-shadow: inset 3px 0 0 var(--color-yellow);
+}
+
+/* ---------- Shared bits ---------- */
+
+.lm-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.lm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.lm-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---------- Simulator layout ---------- */
+
+.lm-sim {
+  gap: var(--space-5);
+}
+
+.lm-sim-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.lm-sim-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.lm-sim-head h1 {
+  font-size: var(--text-page-heading);
+  line-height: var(--leading-tight);
+}
+
+.lm-sim-head p {
+  max-width: none;
+}
+
+.lm-scenario {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-left: 3px solid var(--color-yellow);
+}
+
+.lm-sim-grid {
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr) 17rem;
+  align-items: start;
+  gap: var(--space-5);
+}
+
+.lm-sim-main,
+.lm-sim-side,
+.lm-sim-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.lm-sim-controls {
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+@media (max-width: 1280px) {
+  .lm-sim-grid {
+    grid-template-columns: 16rem minmax(0, 1fr);
+  }
+  .lm-sim-side {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+}
+
+@media (max-width: 800px) {
+  .lm-sim-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Controls */
+
+.lm-group {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.lm-group:last-child {
+  border-bottom: none;
+}
+
+.lm-group summary {
+  padding: var(--space-3) var(--space-4);
+  font-weight: 600;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.lm-group summary:hover {
+  background: var(--color-bg);
+}
+
+.lm-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.lm-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-small);
+}
+
+.lm-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.lm-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.lm-field input[type='range'] {
+  width: 100%;
+  accent-color: var(--color-orange);
+}
+
+.lm-full {
+  display: flex;
+  width: 100%;
+}
+
+.lm-full button {
+  flex: 1;
+  padding: 0 var(--space-2);
+  font-size: var(--text-small);
+}
+
+.lm-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.lm-check .lm-term-label {
+  white-space: nowrap;
+}
+
+.lm-check input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-ink);
+}
+
+/* KPIs */
+
+.lm-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.lm-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.lm-kpi-value {
+  font-size: 1.75rem;
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Results card */
+
+.lm-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.lm-results-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.lm-results .segmented button {
+  padding: 0 var(--space-3);
+  font-size: var(--text-small);
+}
+
+.lm-stale {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.lm-chart {
+  width: 100%;
+  height: auto;
+}
+
+.lm-swatch-dash {
+  width: 1.25rem;
+  height: 0;
+  border-top: 2px dashed var(--color-orange-text);
+  background: none;
+}
+
+.lm-reading {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Download bars */
+
+.lm-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lm-bars li {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr) 9rem;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.lm-bars-track {
+  height: 1.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.lm-bars-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.lm-bar-outline {
+  border: 1px dashed var(--color-chart-gray);
+}
+
+.lm-bars-value {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .lm-bars li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+}
+
+/* Paper-reported block */
+
+.lm-paper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.lm-paper-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.lm-table-wrap {
+  overflow-x: auto;
+}
+
+.lm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.lm-table th,
+.lm-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: right;
+}
+
+.lm-table th:first-child {
+  text-align: left;
+}
+
+.lm-table thead th {
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+/* Class-mix grid */
+
+.lm-mix {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 26rem;
+  overflow-y: auto;
+}
+
+.lm-mix-row {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) 5.5rem;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.lm-mix-row.picked {
+  background: rgb(255 219 0 / 0.25);
+  font-weight: 600;
+}
+
+.lm-mix-id {
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.lm-mix-cells {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.lm-mix-cell {
+  height: 1rem;
+  border-radius: 2px;
+  background: var(--color-ink);
+}
+
+/* Playback */
+
+.lm-playback {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.lm-progress {
+  display: flex;
+  flex: 1 1 14rem;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.lm-progress-track {
+  flex: 1;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.lm-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-orange);
+  transition: width 0.3s;
+}
+
+.lm-full-row {
+  flex-basis: 100%;
+}
+
+/* Experiments */
+
+.lm-predict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-left: 3px solid var(--color-yellow);
+}
+
+.lm-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.lm-options .choice {
+  font-size: var(--text-small);
+}
+
+.lm-options .choice:disabled {
+  cursor: default;
+}
+
+.lm-experiments ol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding-left: 1.25rem;
+}
+
+.lm-experiments button {
+  padding: var(--space-1) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lm-experiments button:hover {
+  text-decoration: underline;
+}
+
+.lm-experiments button[aria-current='true'] {
+  font-weight: 600;
+  box-shadow: inset 0 -3px 0 var(--color-yellow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lm-progress-fill,
+  .lm-stale {
+    transition: none;
+  }
+}
+
+@media (min-width: 1700px) {
+  .lm-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 500px) {
+  .lm-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Level-specific bits ---------- */
+
+.lm-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: calc(-1 * var(--space-1));
+}
+
+.lm-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.lm-chip-btn {
+  border: none;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.lm-chip-btn:hover {
+  background: var(--color-yellow);
+  color: var(--color-ink);
+}
+
+.lm-table caption {
+  margin-bottom: var(--space-2);
+  text-align: left;
+}
+
+/* Page header text spans the full content width, flush with the cards below
+   (overrides the shared 50rem cap only inside this module). */
+.lm-lab .page-header {
+  max-width: none;
+}
+
+/* ---------- Math (KaTeX) ---------- */
+
+/* KaTeX's default 1.21em looks large next to Inter; 1.06em matches its x-height. */
+.lm-math-inline .katex,
+.lm-math-display .katex {
+  font-size: 1.06em;
+}
+
+/* Inline math never breaks inside a formula and sits on the text baseline. */
+.lm-math-inline {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 0.08em;
+  white-space: nowrap;
+  vertical-align: baseline;
+  line-height: 1;
+}
+
+/* Centered display math with room around it. A formula wider than the
+   container scrolls sideways inside its own box instead of being clipped. */
+.lm-math-display {
+  max-width: 100%;
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-1);
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Display equations wrap after relations/operators when the line is too long. */
+.lm-math-display .katex {
+  line-height: 1.7;
+  white-space: normal;
+}
+
+.lm-math-display:focus-visible {
+  outline: var(--focus-ring, 2px solid var(--color-ink));
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Panel holding the "Show the math" equations. */
+.lm-math-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-left: 3px solid var(--color-yellow);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.lm-math-row p {
+  margin: 0;
+}
+
+.lm-math-row .lm-math-display {
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.lm-math-row:last-child .lm-math-display {
+  margin-bottom: 0;
+}
+
+/* Equations in the term drawer and tooltips. */
+.lm-drawer .lm-math-display {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--color-yellow);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.lm-tooltip .katex {
+  color: inherit;
+}
+
+.lm-question .lm-math-display {
+  margin: var(--space-2) 0;
+}
+
+/* Math symbols inside SVG charts use KaTeX's math italic font. */
+.lm-svg-math {
+  font-family: KaTeX_Math, 'Times New Roman', serif;
+  font-style: italic;
+}
+
+@media (max-width: 600px) {
+  .lm-math-panel {
+    padding: var(--space-3);
+  }
+}
+
+.lm-math-fit {
+  display: block;
+}
+
+.lm-nowrap {
+  white-space: nowrap;
+}
