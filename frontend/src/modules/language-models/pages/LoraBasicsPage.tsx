@@ -5,12 +5,13 @@ import { StepThrough, type DiagramStep } from '../../../components/FederatedDiag
 import { formatBytes, formatInt, formatNumber } from '../../../components/format';
 import { NumberField, parseNumber } from '../../../components/NumberField';
 import { Quiz } from '../../../components/Quiz';
-import { AssumptionsList, ModeBadge, StatGrid } from '../../../components/Results';
+import { ModeBadge, StatGrid } from '../../../components/Results';
 import { ApiErrorState, EmptyState, LoadingState, StatusMessage } from '../../../components/StatusMessage';
 import { useApiAction } from '../../../hooks/useApiAction';
 import { calculateLora } from '../api';
 import { useLab } from '../lab/LabContext';
 import { byLevel } from '../lab/levels';
+import { M, MathAssumptions, MathBlock, Rich, rich } from '../lab/Math';
 import { MatrixShapes, SavingsBars } from '../MatrixVisual';
 import type { LoraCalcInput, LoraForm } from '../types';
 
@@ -42,8 +43,8 @@ const STEPS: DiagramStep[] = [
     active: ['train', 'data'],
     body: (
       <p>
-        Each client fine-tunes on its own private text. The base weights <strong>W</strong> never change; only the low-rank adapters{' '}
-        <strong>A</strong> and <strong>B</strong> are trained.
+        Each client fine-tunes on its own private text. The base weights <M tex="W" /> never change; only the low-rank adapters <M tex="A" /> and{' '}
+        <M tex="B" /> are trained.
       </p>
     ),
   },
@@ -57,8 +58,8 @@ const STEPS: DiagramStep[] = [
     active: ['aggregate'],
     body: (
       <p>
-        The server combines the adapters into one global adapter. How it combines them matters: averaging A and B separately is not the same as
-        averaging each client's product B·A.
+        The server combines the adapters into one global adapter. How it combines them matters: averaging <M tex="A" /> and <M tex="B" /> separately is not the
+        same as averaging each client's product <M tex="B_k A_k" />.
       </p>
     ),
   },
@@ -124,14 +125,18 @@ export default function LoraBasicsPage() {
         eyebrow="Module 1 · Language models"
         accent="var(--accent-language-models)"
         title="Federated fine-tuning with LoRA"
-        lead={byLevel(lvl, {
+        lead={
+          <Rich
+            text={byLevel(lvl, {
           beginner:
-            'A chatbot’s “brain” is billions of numbers. Instead of changing all of them, each client trains a small add-on and sends only that, which is far less data.',
+            'A chatbot’s model can contain billions of parameters. Instead of updating all of them, each client trains a small set of additional parameters and sends only those updates to a shared server, keeping its training data local and reducing communication.',
           student:
-            'Large language models have billions of weights. LoRA freezes them and trains two small matrices instead, so each client only needs to send a tiny update.',
+            'Large language models can have billions of weights. LoRA keeps those weights frozen and trains two small matrices for each adapted layer, so each client sends much less data to the server',
           researcher:
-            'LoRA freezes W ∈ ℝ^{m×n} and learns ΔW = BA with B ∈ ℝ^{m×r}, A ∈ ℝ^{r×n}, r ≪ min(m, n). In federated fine-tuning each client exchanges only (B_k, A_k): r(m + n) parameters per adapted matrix.',
-        })}
+            'LoRA freezes $W \\in \\mathbb{R}^{m \\times n}$ and learns $\\Delta W = BA$ with $B \\in \\mathbb{R}^{m \\times r}$, $A \\in \\mathbb{R}^{r \\times n}$, $r \\ll \\min(m, n)$. In federated fine-tuning, client $k$ exchanges only its LoRA factors $(B_k, A_k)$: $r_k(m + n)$ parameters per adapted matrix.',
+            })}
+          />
+        }
       />
 
       <div className="grid-2" style={{ alignItems: 'start' }}>
@@ -156,30 +161,35 @@ export default function LoraBasicsPage() {
                   <strong>Frozen base model.</strong> Every client starts from the same pretrained model. Its weights stay fixed.
                 </p>
                 <p>
-                  <strong>Trainable adapters.</strong> For a weight matrix W, LoRA learns two thin matrices B and A. Their product B·A is a small correction
-                  added to W.
+                  <strong>Trainable adapters.</strong> For a weight matrix <M tex="W" />, LoRA learns two thin matrices <M tex="B" /> and <M tex="A" />.
+                  Their product <M tex="BA" /> is a small correction added to <M tex="W" />.
                 </p>
                 <p>
                   <strong>Federated rounds.</strong> Clients train adapters on private text. The server aggregates them and sends the result back.
                 </p>
               </div>
               <Details summary="Technical details" defaultOpen={researcher}>
+                <p>The adapted layer computes</p>
+                <MathBlock tex="\begin{gathered} h = W x + B A x \\ W \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}} \\ B \in \mathbb{R}^{d_{\text{out}} \times r}, \quad A \in \mathbb{R}^{r \times d_{\text{in}}} \end{gathered}" />
                 <p>
-                  The adapted layer computes <code>h = W·x + B·A·x</code>, where W is <code>d_out × d_in</code> (frozen), B is <code>d_out × r</code>, and A
-                  is <code>r × d_in</code>. B usually starts at zero, so training begins from the unchanged base model.
+                  where <M tex="W" /> is frozen. <M tex="B" /> usually starts at zero, so training begins from the unchanged base model.
                 </p>
                 <p>
-                  <strong>Rank limit vs. actual rank.</strong> The hyperparameter r is an upper bound: B·A can have rank at most r. The learned product may
-                  have a lower actual rank if some directions turn out unnecessary.
+                  <strong>Rank limit vs. actual rank.</strong> The hyperparameter <M tex="r" /> is an upper bound: <M tex="BA" /> can have rank at most{' '}
+                  <M tex="r" />. The learned product may have a lower actual rank if some directions turn out unnecessary.
                 </p>
                 <p>
-                  <strong>Why aggregation is subtle.</strong> If clients send (A<sub>k</sub>, B<sub>k</sub>), averaging A's and B's separately gives
-                  mean(B)·mean(A), which is generally different from mean(B<sub>k</sub>·A<sub>k</sub>). FLoRIST-style methods address this at the server
-                  and use singular value thresholding to pick a compact rank. A real implementation must follow the official paper and code.
+                  <strong>Why aggregation is subtle.</strong> If clients send <M tex="(A_k, B_k)" />, averaging the <M tex="A" />'s and <M tex="B" />'s
+                  separately gives a different update from averaging the products:
+                </p>
+                <MathBlock tex="\Bigl(\frac{1}{K}\sum_{k} B_k\Bigr)\Bigl(\frac{1}{K}\sum_{k} A_k\Bigr) \;\neq\; \frac{1}{K}\sum_{k} B_k A_k" />
+                <p>
+                  FLoRIST-style methods address this at the server and use singular value thresholding to pick a compact rank. A real implementation must
+                  follow the official paper and code.
                 </p>
                 {researcher && (
                   <p className="small muted">
-                    LoRA scaling: the update is applied as (α/r)·BA; the FLoRIST code uses α = 2r, so the scale is 2. {loraRef && <>Paper: {loraRef}.</>}
+                    LoRA scaling: the update is applied as <M tex="(\alpha / r)\, BA" />; the FLoRIST code uses <M tex="\alpha = 2r" />, so the scale is 2. {loraRef && <>Paper: {loraRef}.</>}
                   </p>
                 )}
               </Details>
@@ -211,14 +221,13 @@ export default function LoraBasicsPage() {
               }}
             >
               {!beginner && (
-                <div className="grid-2" style={{ gap: 'var(--space-4)' }}>
-                  <NumberField label="Input dim." unit="d_in" value={form.d_in} onChange={update('d_in')} min={1} max={16384} error={visibleErrors.d_in} />
-                  <NumberField label="Output dim." unit="d_out" value={form.d_out} onChange={update('d_out')} min={1} max={16384} error={visibleErrors.d_out} />
-                </div>
+                <>
+                  <NumberField label={<>Input dim. <M tex="d_{\text{in}}" /></>} value={form.d_in} onChange={update('d_in')} min={1} max={16384} error={visibleErrors.d_in} />
+                  <NumberField label={<>Output dim. <M tex="d_{\text{out}}" /></>} value={form.d_out} onChange={update('d_out')} min={1} max={16384} error={visibleErrors.d_out} />
+                </>
               )}
               <NumberField
-                label={beginner ? 'Add-on size' : 'LoRA rank limit'}
-                unit={beginner ? undefined : 'r'}
+                label={beginner ? 'Add-on size' : <>LoRA rank limit <M tex="r" /></>}
                 value={form.rank}
                 onChange={update('rank')}
                 min={1}
@@ -304,40 +313,46 @@ export default function LoraBasicsPage() {
                         : researcher
                           ? [
                               {
-                                label: 'r(d_in + d_out)',
+                                label: rich('$r(d_{\\text{in}} + d_{\\text{out}})$'),
                                 value: formatInt(data.results.adapter_params),
-                                note: `A: r·d_in = ${formatInt(data.results.a_params)} · B: d_out·r = ${formatInt(data.results.b_params)}`,
+                                note: rich(
+                                  String.raw`$A$: $r\,d_{\text{in}} = ${formatInt(data.results.a_params)}$ · $B$: $d_{\text{out}}\,r = ${formatInt(data.results.b_params)}$`,
+                                ),
                               },
-                              { label: 'd_in·d_out / r(d_in + d_out)', value: `${formatNumber(data.results.savings_ratio, 1)}×` },
+                              { label: rich('$d_{\\text{in}} d_{\\text{out}} \\,/\\, r(d_{\\text{in}} + d_{\\text{out}})$'), value: `${formatNumber(data.results.savings_ratio, 1)}×` },
                               {
                                 label: 'Bytes / client / round',
                                 value: formatBytes(data.results.per_client_update_bytes),
-                                note: `full ΔW: ${formatBytes(data.results.full_update_bytes)}`,
+                                note: rich(`full $\\Delta W$: ${formatBytes(data.results.full_update_bytes)}`),
                               },
-                              { label: 'Upload: K·T·r(d_in + d_out)·b', value: formatBytes(data.results.total_upload_bytes) },
+                              { label: rich('Upload: $K T\\, r(d_{\\text{in}} + d_{\\text{out}})\\, b$'), value: formatBytes(data.results.total_upload_bytes) },
                               {
-                                label: 'Download: K·T·r(d_in + d_out)·b',
+                                label: rich('Download: $K T\\, r(d_{\\text{in}} + d_{\\text{out}})\\, b$'),
                                 value: formatBytes(data.results.total_download_bytes),
-                                note: 'FedIT-style; FLoRIST sends rank p instead',
+                                note: rich('FedIT-style; FLoRIST sends rank $p$ instead'),
                               },
                               { label: 'Upload + download', value: formatBytes(data.results.total_bytes) },
                             ]
                           : [
-                                            { label: 'Adapter parameters', value: formatInt(data.results.adapter_params), note: `A: ${formatInt(data.results.a_params)} · B: ${formatInt(data.results.b_params)}` },
-                                            { label: 'Fewer parameters than W', value: `${formatNumber(data.results.savings_ratio, 1)}×` },
-                                            {
-                                              label: 'Update per client, per round',
-                                              value: formatBytes(data.results.per_client_update_bytes),
-                                              note: `vs. ${formatBytes(data.results.full_update_bytes)} for full W`,
-                                            },
-                                            { label: 'Total upload (all clients, all rounds)', value: formatBytes(data.results.total_upload_bytes) },
-                                            { label: 'Total download', value: formatBytes(data.results.total_download_bytes) },
-                                            { label: 'Upload + download', value: formatBytes(data.results.total_bytes) },
-                                          ]
+                              {
+                                label: 'Adapter parameters',
+                                value: formatInt(data.results.adapter_params),
+                                note: rich(`$A$: ${formatInt(data.results.a_params)} · $B$: ${formatInt(data.results.b_params)}`),
+                              },
+                              { label: rich('Fewer parameters than $W$'), value: `${formatNumber(data.results.savings_ratio, 1)}×` },
+                              {
+                                label: 'Update per client, per round',
+                                value: formatBytes(data.results.per_client_update_bytes),
+                                note: rich(`vs. ${formatBytes(data.results.full_update_bytes)} for full $W$`),
+                              },
+                              { label: 'Total upload (all clients, all rounds)', value: formatBytes(data.results.total_upload_bytes) },
+                              { label: 'Total download', value: formatBytes(data.results.total_download_bytes) },
+                              { label: 'Upload + download', value: formatBytes(data.results.total_bytes) },
+                            ]
                     }
                   />
                   <p className="small muted">Bytes use decimal units: 1 MB = 1,000,000 bytes.</p>
-                  <AssumptionsList assumptions={data.assumptions} />
+                  <MathAssumptions assumptions={data.assumptions} />
                 </>
               )}
             </Card>
@@ -358,7 +373,9 @@ export default function LoraBasicsPage() {
           { id: 'data', label: 'Their private training text', feedback: 'Raw data never leaves the client in federated learning. Only model updates are shared.' },
           { id: 'both', label: 'A, B and the updated W', feedback: 'W is never updated in LoRA, so there is nothing to send for it.' },
         ]}
-        explanation="Because A and B together are r·(d_in + d_out) numbers, the update grows with the rank instead of with d_in × d_out."
+        explanation={
+          <Rich text="Because $A$ and $B$ together are $r(d_{\text{in}} + d_{\text{out}})$ numbers, the update grows with the rank instead of with $d_{\text{in}} \times d_{\text{out}}$." />
+        }
       />
 
       <div className="lm-row">

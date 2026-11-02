@@ -29,10 +29,10 @@ function LabShell() {
         <PlaceholderPage
           number={2}
           title="The aggregation problem"
-          lead="Why averaging B and A separately (FedIT) does not give the average of the clients' updates BA, and what exact stacking costs instead."
+          lead="Why averaging $B$ and $A$ separately (FedIT) does not give the average of the clients' updates $B_k A_k$, and what exact stacking costs instead."
           planned={[
-            'The cross terms and the w_k² diagonal weighting, shown on small matrices you can edit.',
-            'Exact weighted stacking: correct, but the download rank grows to Σr_k.',
+            'The cross terms and the $w_k^2$ diagonal weighting, shown on small matrices you can edit.',
+            'Exact weighted stacking: correct, but the download rank grows to $\\sum_k r_k$.',
             'Heterogeneous ranks: why FedIT cannot average adapters of different sizes.',
           ]}
         />
@@ -41,10 +41,10 @@ function LabShell() {
         <PlaceholderPage
           number={3}
           title="FLoRIST step-by-step"
-          lead="Every intermediate matrix of FLoRIST (Algorithm 1): the stacks, their thin SVDs, Q, P, the SVD of P, and the energy threshold τ."
+          lead="Every intermediate matrix of FLoRIST (Algorithm 1): the stacks, their thin SVDs, $Q$, $P$, the SVD of $P$, and the energy threshold $\tau$."
           planned={[
             'Step through the 22 named intermediate states computed by the backend.',
-            'See the selected rank p and the Eckart–Young error bound (Eq. 5).',
+            'See the selected rank $p$ and the Eckart–Young error bound (Eq. 5).',
             'Rank matching: how each client pads or truncates the global adapters.',
           ]}
         />

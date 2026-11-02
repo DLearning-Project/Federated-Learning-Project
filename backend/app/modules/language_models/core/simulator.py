@@ -81,7 +81,7 @@ def simulate_round(
         weights = normalize_weights(sizes)
         empty = sum(1 for s in sizes if s == 0)
         if empty:
-            notices.append(f"{empty} sampled client(s) have no data at this α, so their weight is 0.")
+            notices.append(f"{empty} sampled client(s) have no data at this $\\alpha$, so their weight is 0.")
 
     Bs, As = synthetic_adapters(seed, sampled, ranks)
     steps = florist_steps(Bs, As, weights, tau)
@@ -92,7 +92,7 @@ def simulate_round(
         notices.append("Client ranks differ, so FedIT is not computed (first release supports equal ranks only).")
     if not server.stacked_rank_below_min_dim:
         notices.append(
-            f"Total stacked rank Σr_k = {server.stacked_rank} is at least min(m, n) = {min(M, N)}, "
+            f"Total stacked rank $\\sum_k r_k = {server.stacked_rank}$ is at least $\\min(m, n) = {min(M, N)}$, "
             "so FLoRIST's compact-computation advantage no longer applies. Results stay correct."
         )
 
@@ -110,7 +110,7 @@ def simulate_round(
         notices=notices,
         assumptions=SYNTHETIC_ASSUMPTIONS
         + [
-            f"Data: {NUM_CLASSES} classes x {SAMPLES_PER_CLASS} samples, split by Dirichlet(α) labels; clients are weighted by their sample counts.",
+            f"Data: {NUM_CLASSES} classes × {SAMPLES_PER_CLASS} samples, split by $\\operatorname{{Dir}}(\\alpha)$ labels; clients are weighted by their sample counts, $w_k = n_k / N$.",
             "Clients are sampled without replacement, seeded by the random seed and the round number.",
         ],
     )

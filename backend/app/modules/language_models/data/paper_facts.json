@@ -1,1076 +1,1076 @@
 {
-  "schema_version": 1,
-  "paper": {
-    "title": "FLoRIST: Singular Value Thresholding for Efficient and Accurate Federated Fine-Tuning of Large Language Models",
-    "authors": [
-      "Hariharan Ramesh",
-      "Jyotikrishna Dass"
-    ],
-    "venue": "MLSys 2026",
-    "code_url": "https://github.com/DASS-Lab-Group/FLoRIST",
-    "code_commit_inspected": "100d373025866d148e092a17001e1232dabeeabd",
-    "code_license": "Apache-2.0"
-  },
-  "provenance": "Paper-reported values and paper definitions. Transcribed from the camera-ready PDF; check against the PDF before quoting.",
-  "terms": [
-    {
-      "id": "lora",
-      "label": "LoRA (Low-Rank Adaptation)",
-      "short": "Fine-tuning that freezes a weight matrix W and learns a small low-rank correction BA.",
-      "long": "LoRA keeps the pretrained weights W frozen and adds a trainable update ΔW = BA, where B is m×r and A is r×n with r much smaller than m and n. Only A and B are trained, which cuts the number of trainable parameters dramatically.",
-      "equation": "W' = W + \\Delta W = W + BA,\\quad B \\in \\mathbb{R}^{m\\times r},\\ A \\in \\mathbb{R}^{r\\times n},\\ r \\ll \\min(m,n)",
-      "reference": "Sec. 2 (Finetuning of LLMs)",
-      "levels": {
-        "beginner": "Instead of rewriting a whole textbook, each hospital writes a short set of margin notes that adjust it.",
-        "student": "LoRA freezes the big weight matrix and trains two thin matrices whose product is the update.",
-        "researcher": "ΔW = BA with rank at most r; W is frozen and only (A, B) are trained and exchanged."
-      },
-      "analogy": "Margin notes on a shared textbook: the book stays the same, only the notes change.",
-      "equation_plain": "W′ = W + ΔW = W + B A,   B ∈ ℝ^{m×r}, A ∈ ℝ^{r×n},   r ≪ min(m, n)"
-    },
-    {
-      "id": "lora_rank",
-      "label": "LoRA rank r",
-      "short": "The inner dimension of B and A; it limits the rank of the update BA.",
-      "long": "The rank r is the number of columns of B and rows of A. It is an upper limit: the product BA has rank at most r, and the learned update may use fewer directions. In federated settings each client k can use its own rank r_k.",
-      "equation": "\\operatorname{rank}(BA) \\le r",
-      "reference": "Sec. 2; Sec. 3 (client-specific rank r_k)",
-      "levels": {
-        "beginner": "How many independent adjustments a client's notes can make.",
-        "student": "The size of the bottleneck between B and A; a larger rank allows a richer update but costs more to send.",
-        "researcher": "Upper bound on rank(B_kA_k); heterogeneous clients use different r_k."
-      },
-      "equation_plain": "rank(B A) ≤ r"
-    },
-    {
-      "id": "adapters",
-      "label": "Adapters A and B",
-      "short": "The two trainable LoRA matrices: B (m×r) and A (r×n).",
-      "long": "Each adapted weight matrix gets a pair of adapters. B starts at zero and A is randomly initialized, so training starts from the unchanged model. Clients upload their adapters instead of full weight updates.",
-      "equation": "B_k \\in \\mathbb{R}^{m\\times r_k},\\ A_k \\in \\mathbb{R}^{r_k\\times n}",
-      "reference": "Sec. 2; Algorithm 1 (initialization)",
-      "levels": {
-        "beginner": "The two small pieces of a client's notes that get sent to the server.",
-        "student": "B and A are the small trainable matrices; their product is the client's update.",
-        "researcher": "Local factors (B_k, A_k); Algorithm 1 initializes B_k = 0, A_k ~ N(0, σ²) in round 1."
-      },
-      "equation_plain": "B_k ∈ ℝ^{m×r_k},   A_k ∈ ℝ^{r_k×n}"
-    },
-    {
-      "id": "delta_w",
-      "label": "Global update ΔW",
-      "short": "The weighted average of the clients' updates, the target every aggregation method should reproduce.",
-      "long": "In classical FedAvg the server averages client updates weighted by data size. For LoRA the client update is B_kA_k, so the correct aggregate is the weighted sum of these products, an m×n matrix the server would ideally never have to build.",
-      "equation": "\\Delta W = \\sum_{k=1}^{K} \\frac{n_k}{N}\\,\\Delta W_k = \\sum_{k=1}^{K} w_k B_k A_k",
-      "reference": "Sec. 2 (FedAvg); Sec. 3",
-      "levels": {
-        "beginner": "The combined lesson learned from all hospitals, weighted by how much data each has.",
-        "student": "The weighted average of every client's BA product; this is what aggregation should produce.",
-        "researcher": "Target ΔW = Σ_k w_k B_kA_k ∈ ℝ^{m×n}; FLoRIST obtains its SVD without forming it."
-      },
-      "equation_plain": "ΔW = Σ_k (n_k/N) ΔW_k = Σ_k w_k B_k A_k"
-    },
-    {
-      "id": "aggregation_weight",
-      "label": "Aggregation weight w_k",
-      "short": "Each client's share of the total data, n_k / N.",
-      "long": "Clients with more local samples count more in the aggregate. The weights are non-negative and sum to one.",
-      "equation": "w_k = \\frac{n_k}{N},\\quad N = \\sum_k n_k,\\quad \\sum_k w_k = 1",
-      "reference": "Sec. 2 (FedAvg); Sec. 3 (weighted stacking)",
-      "levels": {
-        "beginner": "A hospital with more patients gets a bigger say.",
-        "student": "The fraction of all training examples that belong to client k.",
-        "researcher": "w_k = n_k/N; in FLoRIST the weight multiplies A_k in the stack."
-      },
-      "equation_plain": "w_k = n_k / N,   N = Σ_k n_k,   Σ_k w_k = 1"
-    },
-    {
-      "id": "fedit",
-      "label": "FedIT",
-      "short": "Federated LoRA that averages B and A separately.",
-      "long": "FedIT averages the clients' B matrices and A matrices independently. Multiplying the two averages is generally not the average of the products, so the aggregate contains cross terms. FedIT supports only equal client ranks natively; zero-padding (HetLoRA) is needed for different ranks.",
-      "equation": "B_{FedIT} = \\sum_k w_k B_k,\\quad A_{FedIT} = \\sum_k w_k A_k,\\quad B_{FedIT}A_{FedIT} \\ne \\sum_k w_k B_kA_k \\text{ in general}",
-      "reference": "Sec. 2 (FedIT); Zhang et al. 2024a",
-      "levels": {
-        "beginner": "Averaging the two halves of everyone's notes separately, then gluing the averages together.",
-        "student": "FedIT averages B's and A's separately, which mixes pieces from different clients.",
-        "researcher": "(Σ w_iB_i)(Σ w_jA_j) introduces cross terms w_iw_jB_iA_j (i≠j) and w_k² diagonal weights."
-      },
-      "equation_plain": "B_FedIT = Σ_k w_k B_k,   A_FedIT = Σ_k w_k A_k,   B_FedIT A_FedIT ≠ Σ_k w_k B_k A_k in general"
-    },
-    {
-      "id": "cross_term",
-      "label": "Cross term",
-      "short": "A product B_iA_j that mixes one client's B with another client's A.",
-      "long": "Expanding FedIT's product gives terms B_iA_j for every pair of clients. Terms with i ≠ j are updates no client learned; the paper calls them cross-term noise.",
-      "equation": "\\Big(\\sum_i w_iB_i\\Big)\\Big(\\sum_j w_jA_j\\Big) = \\sum_{i}\\sum_{j} w_iw_j B_iA_j",
-      "reference": "Sec. 2 (FedIT challenges)",
-      "levels": {
-        "beginner": "A sentence made from the first half of one hospital's note and the second half of another's.",
-        "student": "When i ≠ j, B_iA_j combines two different clients' factors and adds an update nobody trained.",
-        "researcher": "Off-diagonal blocks w_iw_jB_iA_j, i ≠ j, of the expanded FedIT product."
-      },
-      "equation_plain": "(Σ_i w_i B_i)(Σ_j w_j A_j) = Σ_i Σ_j w_i w_j B_i A_j"
-    },
-    {
-      "id": "diagonal_weighting",
-      "label": "Diagonal weighting",
-      "short": "In FedIT's expansion, each client's own product B_kA_k gets weight w_k² instead of w_k.",
-      "long": "Even without cross terms, FedIT's diagonal blocks are scaled by the square of the client weight, so they are not correct in magnitude by themselves. Both diagonal weighting and cross terms contribute to FedIT's error.",
-      "equation": "\\text{diagonal block } k:\\ w_k^2 B_kA_k \\quad\\text{vs. target } w_kB_kA_k",
-      "reference": "Derived from Sec. 2 (FedIT); app explanation",
-      "levels": {
-        "beginner": "Each hospital's own note gets shrunk twice instead of once.",
-        "student": "FedIT's matching-client terms are weighted w_k² rather than w_k.",
-        "researcher": "Diagonal of the expanded product carries w_k²; net error = Σ_{i≠j} w_iw_jB_iA_j + Σ_k (w_k² − w_k)B_kA_k."
-      },
-      "equation_plain": "diagonal block k:  w_k² B_k A_k   vs. target  w_k B_k A_k"
-    },
-    {
-      "id": "weighted_stacking",
-      "label": "Weighted stacking",
-      "short": "Concatenating all clients' B's side by side and their weighted A's on top of each other, which reproduces ΔW exactly.",
-      "long": "The server stacks B_stack = [B_1 … B_K] (m×r) and A_stack = [w_1A_1; …; w_KA_K] (r×n), with r = Σ r_k. Block multiplication gives exactly Σ w_kB_kA_k, with no cross terms. FLoRA uses this aggregation; FLoRIST uses it as its first step.",
-      "equation": "B_{stack} = B_1 \\oplus \\dots \\oplus B_K,\\quad A_{stack} = w_1A_1 \\oplus \\dots \\oplus w_KA_K,\\quad \\Delta W = B_{stack}A_{stack}",
-      "reference": "Sec. 3 (Noise-free aggregation via weighted stacking); Algorithm 1",
-      "levels": {
-        "beginner": "Keep every hospital's notes intact and side by side, each scaled by its weight.",
-        "student": "Stack the B's horizontally and weighted A's vertically; their product is exactly the weighted average.",
-        "researcher": "Block product B_stackA_stack = Σ_k w_kB_kA_k; stacked rank r = Σ_k r_k."
-      },
-      "equation_plain": "B_stack = [B_1 … B_K],   A_stack = [w_1 A_1; …; w_K A_K],   ΔW = B_stack A_stack"
-    },
-    {
-      "id": "reduced_svd",
-      "label": "Reduced SVD",
-      "short": "A singular value decomposition that keeps only the min(rows, columns) components.",
-      "long": "FLoRIST decomposes B_stack and A_stack separately with SVD (Eq. 1) instead of decomposing the m×n matrix ΔW. A reduced (thin) SVD keeps shapes correct even when the stacked rank r exceeds m or n.",
-      "equation": "B_{stack} = U_BS_BV_B^\\top,\\quad A_{stack} = U_AS_AV_A^\\top",
-      "reference": "Sec. 3, Eq. 1",
-      "levels": {
-        "beginner": "Breaking each stack of notes into its main directions and their strengths.",
-        "student": "Factor each stack into rotation × scaling × rotation, keeping only the needed components.",
-        "researcher": "Thin SVDs of the two stacks; U_B is m×min(m,r), V_A^T is min(r,n)×n."
-      },
-      "equation_plain": "B_stack = U_B S_B V_Bᵀ,   A_stack = U_A S_A V_Aᵀ   (Eq. 1)"
-    },
-    {
-      "id": "matrix_q",
-      "label": "Matrix Q",
-      "short": "The product V_Bᵀ U_A that links the two stack decompositions.",
-      "long": "Q = V_Bᵀ U_A captures how the right singular vectors of B_stack align with the left singular vectors of A_stack. When r ≤ min(m, n) it is r×r and orthogonal; in general its shape is min(m,r)×min(r,n).",
-      "equation": "Q = V_B^\\top U_A",
-      "reference": "Sec. 3, Eq. 2",
-      "levels": {
-        "beginner": "How the directions in the two stacks line up.",
-        "student": "Q connects the two SVDs; it is small because it only involves the stacked rank r.",
-        "researcher": "Q ∈ ℝ^{min(m,r)×min(r,n)}; orthogonal when r ≤ min(m,n) (paper states the r×r case)."
-      },
-      "equation_plain": "Q = V_Bᵀ U_A   (Eq. 2)"
-    },
-    {
-      "id": "matrix_p",
-      "label": "Compact matrix P",
-      "short": "A small matrix whose singular values equal those of ΔW.",
-      "long": "P = S_B Q S_A has shape min(m,r)×min(r,n). Since ΔW = U_B P V_Aᵀ with orthonormal U_B and V_A, the SVD of P gives the SVD of ΔW without forming the m×n matrix. The compute advantage requires Σ r_k ≪ min(m, n).",
-      "equation": "P = S_B\\,Q\\,S_A,\\quad \\Delta W = U_B\\,P\\,V_A^\\top",
-      "reference": "Sec. 3, Eq. 2",
-      "levels": {
-        "beginner": "A small summary that has the same main directions as the full combined lesson.",
-        "student": "P is tiny but has the same singular values as ΔW, so the server never builds the big matrix.",
-        "researcher": "SVD(P) = U_PS_PV_P^T yields SVD(ΔW) = (U_BU_P)S_P(V_P^TV_A^T); advantage needs Σr_k ≪ min(m,n)."
-      },
-      "equation_plain": "P = S_B Q S_A,   ΔW = U_B P V_Aᵀ   (Eq. 2)"
-    },
-    {
-      "id": "singular_value",
-      "label": "Singular value",
-      "short": "A non-negative number measuring how strongly a matrix acts along one direction.",
-      "long": "The SVD writes a matrix as a sum of rank-one pieces, each scaled by a singular value σ_i in decreasing order. Large singular values carry most of the update; the paper observes that the singular values of ΔW drop off sharply after about 6 to 10 components.",
-      "equation": "M = \\sum_i \\sigma_i u_i v_i^\\top,\\quad \\sigma_1 \\ge \\sigma_2 \\ge \\dots \\ge 0",
-      "reference": "Sec. 3 (Figure 2)",
-      "levels": {
-        "beginner": "How important each direction of the combined lesson is.",
-        "student": "The strengths of a matrix's independent directions, sorted from largest to smallest.",
-        "researcher": "σ_i(ΔW) = diag(S_P); Figure 2 shows rapid decay in q_proj layers of TinyLlama."
-      },
-      "equation_plain": "M = Σ_i σ_i u_i v_iᵀ,   σ_1 ≥ σ_2 ≥ … ≥ 0"
-    },
-    {
-      "id": "energy",
-      "label": "Energy (cumulative)",
-      "short": "The share of the sum of squared singular values kept by the first p components.",
-      "long": "The energy of the top-p components is Σ_{i≤p} σ_i² divided by the total Σ σ_i². It equals the fraction of ΔW's squared Frobenius norm that a rank-p approximation keeps.",
-      "equation": "E(p) = \\frac{\\sum_{i=1}^{p}\\sigma_i^2}{\\sum_{i=1}^{r^*}\\sigma_i^2}",
-      "reference": "Sec. 3, Eq. 6",
-      "levels": {
-        "beginner": "How much of the combined lesson survives if we keep only the top directions.",
-        "student": "The fraction of the update's total 'size' kept when you keep only the first p directions.",
-        "researcher": "Fraction of ‖ΔW‖_F² retained by the rank-p truncation."
-      },
-      "equation_plain": "E(p) = Σ_{i≤p} σ_i² / Σ_i σ_i²"
-    },
-    {
-      "id": "energy_threshold",
-      "label": "Energy threshold τ",
-      "short": "The tunable fraction of energy FLoRIST must keep, τ ∈ (0, 1].",
-      "long": "FLoRIST keeps the smallest number of components whose cumulative energy reaches τ. Lower τ gives a smaller global rank and cheaper downloads; τ = 0.9 is the paper's practical default. The paper also reports a regularizing effect: accuracy peaks at τ around 0.91 to 0.92 on TinyLlama/Wizard.",
-      "equation": "p = \\min\\Big\\{p : \\frac{\\sum_{i=1}^{p}\\sigma_i^2}{\\sum_{i=1}^{r^*}\\sigma_i^2} \\ge \\tau\\Big\\}",
-      "reference": "Sec. 3, Eq. 6; Sec. 4.2; Figure 7",
-      "levels": {
-        "beginner": "How much of the combined lesson we insist on keeping.",
-        "student": "A dial: higher τ keeps more directions (bigger download), lower τ keeps fewer.",
-        "researcher": "Energy-based truncation level; τ* tuned in [0.80, 0.99], τ = 0.9 fixed default."
-      },
-      "equation_plain": "p = smallest p with Σ_{i≤p} σ_i² / Σ_i σ_i² ≥ τ   (Eq. 6)"
-    },
-    {
-      "id": "selected_rank",
-      "label": "Selected rank p",
-      "short": "The global adapter rank chosen by the energy threshold.",
-      "long": "p is the smallest rank whose cumulative energy reaches τ. It can differ per layer, and the paper finds it is typically much smaller than the clients' ranks (as low as 6 to 10 even when clients use rank up to 64).",
-      "equation": "p \\le \\operatorname{rank}(\\Delta W) \\le \\sum_k r_k",
-      "reference": "Sec. 3; Sec. 4.5 (Figure 6)",
-      "levels": {
-        "beginner": "How many directions the shared update ends up keeping.",
-        "student": "The rank of the global adapters, picked automatically by the threshold.",
-        "researcher": "Per-layer p_l from Eq. 6; Figure 6 shows layer-wise optimal ranks for q_proj and v_proj."
-      },
-      "equation_plain": "p ≤ rank(ΔW) ≤ Σ_k r_k"
-    },
-    {
-      "id": "global_adapters",
-      "label": "Global adapters B_g, A_g",
-      "short": "The single pair of rank-p adapters the server sends to every client.",
-      "long": "From SVD(P) = U_PS_PV_Pᵀ, FLoRIST builds B_g = (U_BU_P)[:, :p] S_P[:p, :p] and A_g = (V_PᵀV_Aᵀ)[:p, :]. Their product is the best rank-p approximation of ΔW.",
-      "equation": "B_g = (U_BU_P)_{[:, :p]}(S_P)_{[:p,:p]},\\quad A_g = (V_P^\\top V_A^\\top)_{[:p,:]}",
-      "reference": "Sec. 3, Eq. 3; Algorithm 1",
-      "levels": {
-        "beginner": "The compact shared notes every hospital downloads.",
-        "student": "B_g and A_g are the compressed global update; all clients download the same pair.",
-        "researcher": "Rank-p factorization B_gA_g = best rank-p approximation of ΔW (Eckart–Young–Mirsky)."
-      },
-      "equation_plain": "B_g = (U_B U_P)[:, :p] S_P[:p, :p],   A_g = (V_Pᵀ V_Aᵀ)[:p, :]   (Eq. 3)"
-    },
-    {
-      "id": "rank_matching",
-      "label": "Rank matching (pad / truncate)",
-      "short": "How a client fits the rank-p global adapters to its own rank r_k.",
-      "long": "If p < r_k, the client zero-pads B_g with columns and A_g with rows; if p > r_k, it keeps the first r_k columns of B_g and rows of A_g. Zero-padded components stay inactive during that round's local training under ordinary gradient-based optimization, so a client with r_k > p trains an adapter of rank at most p in that round; the global rank selected later can still grow.",
-      "equation": "p<r_k:\\ B_k=[B_g\\,|\\,0],\\ A_k=\\begin{bmatrix}A_g\\\\0\\end{bmatrix};\\quad p>r_k:\\ B_k=(B_g)_{[:, :r_k]},\\ A_k=(A_g)_{[:r_k,:]}",
-      "reference": "Algorithm 1 (client side); Appendix C (Training flow)",
-      "levels": {
-        "beginner": "Each hospital trims or pads the shared notes to fit its own notebook.",
-        "student": "Clients pad with zeros or cut off extra components so the global adapters fit their rank.",
-        "researcher": "Zero-padding is exact (BA unchanged) but padded components get zero gradient within the round."
-      },
-      "equation_plain": "p < r_k: B_k = [B_g | 0], A_k = [A_g; 0]      p > r_k: B_k = B_g[:, :r_k], A_k = A_g[:r_k, :]"
-    },
-    {
-      "id": "eckart_young_bound",
-      "label": "Eckart–Young–Mirsky bound",
-      "short": "Keeping the top-p singular components gives the smallest possible rank-p error.",
-      "long": "The best rank-p approximation of a matrix in Frobenius norm keeps its top-p singular components, and the error equals the square root of the discarded energy. FLoRIST's reconstruction error is therefore bounded by the tail singular values.",
-      "equation": "\\|\\Delta W - B_gA_g\\|_F \\le \\Big(\\sum_{i=p+1}^{r^*}\\sigma_i^2\\Big)^{1/2}",
-      "reference": "Sec. 3 (Theoretical analysis), Eq. 5",
-      "levels": {
-        "beginner": "Dropping the least important directions loses as little as possible.",
-        "student": "The error from compressing to rank p is exactly the size of what was thrown away.",
-        "researcher": "Truncated SVD is optimal in ‖·‖_F; FLoRIST's error equals the tail energy (Eq. 5)."
-      },
-      "equation_plain": "‖ΔW − B_g A_g‖_F ≤ ( Σ_{i>p} σ_i² )^{1/2}   (Eq. 5)"
-    },
-    {
-      "id": "lora_scaling",
-      "label": "LoRA scaling α/r",
-      "short": "The constant LoRA multiplies BA by during training.",
-      "long": "Implementations scale the adapter output by α/r. If clients use different scales, their products must be scaled before aggregation. The official FLoRIST code uses α = 2r_k for heterogeneous clients and α = 32 with r = 16 for homogeneous clients, so the scale is 2 for every client.",
-      "equation": "\\Delta W_k = \\frac{\\alpha}{r_k} B_kA_k",
-      "reference": "Official code (main.py LoraConfig); not discussed in the paper",
-      "levels": {
-        "beginner": "A fixed volume knob on each client's notes; it must be the same for everyone.",
-        "student": "LoRA multiplies BA by α/r; keeping it equal across clients keeps aggregation correct.",
-        "researcher": "Scale s_k = α/r_k = 2 for all clients in the official runs; aggregation can ignore it."
-      },
-      "equation_plain": "ΔW_k = (α / r_k) B_k A_k"
-    },
-    {
-      "id": "heterogeneous_ranks",
-      "label": "Heterogeneous client ranks",
-      "short": "Clients use different LoRA ranks, usually matched to their compute capacity.",
-      "long": "The paper's heterogeneous setting uses a heavy-tail distribution with 16× rank disparity: of 100 clients, 40 use rank 4, 20 rank 8, 20 rank 16, 10 rank 32 and 10 rank 64.",
-      "equation": "r_k \\in \\{4, 8, 16, 32, 64\\}",
-      "reference": "Sec. 4.1 (Datasets and configurations)",
-      "levels": {
-        "beginner": "Some hospitals have big notebooks, most have small ones.",
-        "student": "Different clients can afford different adapter sizes.",
-        "researcher": "Heavy-tail rank distribution 40/20/20/10/10 over ranks 4/8/16/32/64."
-      },
-      "equation_plain": "r_k ∈ {4, 8, 16, 32, 64}"
-    },
-    {
-      "id": "communication_cost",
-      "label": "Communication cost (download)",
-      "short": "In the paper: the parameters sent from the server to the selected clients per round.",
-      "long": "The paper's communication cost refers only to the download: the total number of parameters the server transmits to the selected clients in a round. Table 3 also reports upload and download in MB.",
-      "equation": "\\text{cost} = \\text{total parameters downloaded per round}",
-      "reference": "Sec. 4.1 (Communication cost and efficiency definitions); Table 3",
-      "levels": {
-        "beginner": "How much the server sends back to the hospitals each round.",
-        "student": "The size of what clients download each round; FLoRIST shrinks it by sending rank-p adapters.",
-        "researcher": "Download-only parameter count per round; MB conversions in Table 3 and Appendix F."
-      },
-      "equation_plain": "cost = total parameters downloaded per round"
-    },
-    {
-      "id": "communication_efficiency",
-      "label": "Communication efficiency",
-      "short": "The inverse of the download cost, approximated by the inverse of the total download rank.",
-      "long": "Defined as 1 / total parameters downloaded and approximated by 1 / total download rank (Sec. 4.1). Appendix F states it as 1 / (total rank / 2). Table 2 reports it in units of 10⁻⁴.",
-      "equation": "\\text{Eff.} = \\frac{1}{\\text{Total Parameters Downloaded}} \\approx \\frac{1}{\\text{Total Download Rank}}",
-      "reference": "Sec. 4.1; Table 2; Appendix F (Metrics)",
-      "levels": {
-        "beginner": "A score where higher means less data to download.",
-        "student": "One over the download size; Table 2 lists it ×10⁻⁴.",
-        "researcher": "Two stated definitions (1/rank vs 1/(rank/2)); see verification notes."
-      },
-      "equation_plain": "Eff. = 1 / total parameters downloaded ≈ 1 / total download rank"
-    },
-    {
-      "id": "flora",
-      "label": "FLoRA",
-      "short": "Federated LoRA that stacks client adapters and sends the full stack back.",
-      "long": "FLoRA uses stacking for exact aggregation and supports heterogeneous ranks, but the downloaded stack has rank Σ r_k, so download cost grows with the number of clients. Its clients merge the downloaded adapters into the frozen model and reinitialize local adapters each round.",
-      "equation": "\\text{download rank} = \\sum_k r_k",
-      "reference": "Sec. 2 (FLoRA); Wang et al. 2024",
-      "levels": {
-        "beginner": "Every hospital receives everyone's notes in full.",
-        "student": "Exact stacking, but the download grows with every extra client.",
-        "researcher": "Stacked rank Σr_k broadcast; merge-and-reinitialize client protocol."
-      },
-      "equation_plain": "download rank = Σ_k r_k"
-    },
-    {
-      "id": "flexlora",
-      "label": "FlexLoRA",
-      "short": "Federated LoRA that forms the full ΔW, runs an SVD, and sends each client a rank-r_k slice.",
-      "long": "FlexLoRA reconstructs ΔW ∈ ℝ^{m×n} on the server, applies a full SVD, and redistributes the top r_k components to each client. This needs large server memory and compute, and low-rank clients may miss important components.",
-      "equation": "\\Delta W = U S V^\\top,\\quad B_k = U_{[:, :r_k]}S_{[:r_k,:r_k]},\\ A_k = V^\\top_{[:r_k,:]}",
-      "reference": "Sec. 2 (FlexLoRA); Bai et al. 2024; Appendix A",
-      "levels": {
-        "beginner": "The server rewrites the full combined lesson, then sends each hospital a summary sized to its notebook.",
-        "student": "Full SVD of the big update, with a different-size slice per client.",
-        "researcher": "Explicit m×n ΔW and full SVD: O(L·min(m,n)·mn) server cost."
-      },
-      "equation_plain": "ΔW = U S Vᵀ,   B_k = U[:, :r_k] S[:r_k, :r_k],   A_k = Vᵀ[:r_k, :]"
-    },
-    {
-      "id": "ffa_lora",
-      "label": "FFA-LoRA",
-      "short": "Federated LoRA that freezes A at a shared initialization and trains only B.",
-      "long": "With A frozen and shared, averaging the B's gives an exact aggregate and halves communication, but only half the LoRA parameters train, which can slow convergence. Heterogeneous ranks need zero-padding.",
-      "equation": "\\Delta W_k = B_kA_{init},\\quad \\Delta W = \\Big(\\sum_k w_kB_k\\Big)A_{init}",
-      "reference": "Sec. 2 (FFA-LoRA); Sun et al. 2024",
-      "levels": {
-        "beginner": "Everyone shares the same second half of the notes and only writes the first half.",
-        "student": "Freeze A for everyone so averaging B is exact.",
-        "researcher": "Exact aggregation via shared frozen A_init; half the trainable parameters."
-      },
-      "equation_plain": "ΔW_k = B_k A_init,   ΔW = (Σ_k w_k B_k) A_init"
-    }
+ "schema_version": 1,
+ "paper": {
+  "title": "FLoRIST: Singular Value Thresholding for Efficient and Accurate Federated Fine-Tuning of Large Language Models",
+  "authors": [
+   "Hariharan Ramesh",
+   "Jyotikrishna Dass"
   ],
-  "reported_results": {
-    "table2": {
-      "reference": "Table 2",
-      "caption": "MMLU accuracy (%) and communication efficiency (×10⁻⁴) after 75 rounds.",
-      "setup": "100 clients, 10 sampled per round, 75 rounds, Dirichlet α = 0.5 non-IID partitions, LoRA on self-attention layers, learning rate 0.0003, MMLU subset of 1,444 questions (Sec. 4.1).",
-      "notes": [
-        "FLoRIST [τ*] uses a threshold tuned per configuration by binary search over [0.80, 0.99]; it is a diagnostic upper bound.",
-        "FLoRIST [τ=0.9] uses one fixed threshold for all configurations."
-      ],
-      "rows": [
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FedIT",
-          "dataset": "Dolly",
-          "accuracy_pct": 27.46,
-          "efficiency_e-4": 14.2
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FedIT",
-          "dataset": "Alpaca",
-          "accuracy_pct": 28.35,
-          "efficiency_e-4": 14.2
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FedIT",
-          "dataset": "Wizard",
-          "accuracy_pct": 36.61,
-          "efficiency_e-4": 14.2
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 28.99,
-          "efficiency_e-4": 1.78
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 28.99,
-          "efficiency_e-4": 1.78
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 34.2,
-          "efficiency_e-4": 1.78
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FlexLoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 28.06,
-          "efficiency_e-4": 14.2
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FlexLoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.22,
-          "efficiency_e-4": 14.2
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FlexLoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 39.75,
-          "efficiency_e-4": 14.2
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FFA-LoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 27.79,
-          "efficiency_e-4": 28.4
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FFA-LoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 31.58,
-          "efficiency_e-4": 28.4
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FFA-LoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 36.01,
-          "efficiency_e-4": 28.4
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Dolly",
-          "accuracy_pct": 29.16,
-          "efficiency_e-4": 53.54
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Alpaca",
-          "accuracy_pct": 32.26,
-          "efficiency_e-4": 35.08
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Wizard",
-          "accuracy_pct": 40.95,
-          "efficiency_e-4": 54.38
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Dolly",
-          "accuracy_pct": 30.94,
-          "efficiency_e-4": 23.48
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Alpaca",
-          "accuracy_pct": 31.68,
-          "efficiency_e-4": 60.06
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Wizard",
-          "accuracy_pct": 38.92,
-          "efficiency_e-4": 63.09
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FedIT (zero-pad)",
-          "dataset": "Dolly",
-          "accuracy_pct": 25.73,
-          "efficiency_e-4": 3.55
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FedIT (zero-pad)",
-          "dataset": "Alpaca",
-          "accuracy_pct": 31.04,
-          "efficiency_e-4": 3.55
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FedIT (zero-pad)",
-          "dataset": "Wizard",
-          "accuracy_pct": 44.19,
-          "efficiency_e-4": 3.55
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 27.2,
-          "efficiency_e-4": 0.5
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 28.58,
-          "efficiency_e-4": 0.5
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 33.74,
-          "efficiency_e-4": 0.5
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FlexLoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 28.49,
-          "efficiency_e-4": 11.96
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FlexLoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.61,
-          "efficiency_e-4": 11.96
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FlexLoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 36.39,
-          "efficiency_e-4": 11.96
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FFA-LoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 18.54,
-          "efficiency_e-4": 7.1
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FFA-LoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 23.19,
-          "efficiency_e-4": 7.1
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FFA-LoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 23.75,
-          "efficiency_e-4": 7.1
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Dolly",
-          "accuracy_pct": 28.87,
-          "efficiency_e-4": 37.87
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Alpaca",
-          "accuracy_pct": 31.33,
-          "efficiency_e-4": 45.09
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Wizard",
-          "accuracy_pct": 38.2,
-          "efficiency_e-4": 13.6
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Dolly",
-          "accuracy_pct": 27.69,
-          "efficiency_e-4": 34.93
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.69,
-          "efficiency_e-4": 34.9
-        },
-        {
-          "model": "TinyLlama",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Wizard",
-          "accuracy_pct": 41.51,
-          "efficiency_e-4": 36.16
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FedIT",
-          "dataset": "Dolly",
-          "accuracy_pct": 25.0,
-          "efficiency_e-4": 19.5
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FedIT",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.44,
-          "efficiency_e-4": 19.5
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FedIT",
-          "dataset": "Wizard",
-          "accuracy_pct": 30.48,
-          "efficiency_e-4": 19.5
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 22.48,
-          "efficiency_e-4": 2.44
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.16,
-          "efficiency_e-4": 2.44
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 28.57,
-          "efficiency_e-4": 2.44
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FlexLoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 27.39,
-          "efficiency_e-4": 19.5
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FlexLoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.24,
-          "efficiency_e-4": 19.5
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FlexLoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 30.03,
-          "efficiency_e-4": 19.5
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FFA-LoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 26.15,
-          "efficiency_e-4": 39.06
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FFA-LoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.18,
-          "efficiency_e-4": 39.06
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FFA-LoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 28.4,
-          "efficiency_e-4": 39.06
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Dolly",
-          "accuracy_pct": 28.28,
-          "efficiency_e-4": 51.71
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Alpaca",
-          "accuracy_pct": 30.46,
-          "efficiency_e-4": 33.3
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Wizard",
-          "accuracy_pct": 29.31,
-          "efficiency_e-4": 51.19
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Dolly",
-          "accuracy_pct": 29.48,
-          "efficiency_e-4": 33.64
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.73,
-          "efficiency_e-4": 33.42
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Wizard",
-          "accuracy_pct": 29.62,
-          "efficiency_e-4": 51.19
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FedIT (zero-pad)",
-          "dataset": "Dolly",
-          "accuracy_pct": 21.41,
-          "efficiency_e-4": 4.88
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FedIT (zero-pad)",
-          "dataset": "Alpaca",
-          "accuracy_pct": 28.37,
-          "efficiency_e-4": 4.88
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FedIT (zero-pad)",
-          "dataset": "Wizard",
-          "accuracy_pct": 28.42,
-          "efficiency_e-4": 4.88
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 23.85,
-          "efficiency_e-4": 2.06
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 30.15,
-          "efficiency_e-4": 2.06
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 27.73,
-          "efficiency_e-4": 2.06
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FlexLoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 26.74,
-          "efficiency_e-4": 16.44
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FlexLoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 29.95,
-          "efficiency_e-4": 16.44
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FlexLoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 29.13,
-          "efficiency_e-4": 16.44
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FFA-LoRA",
-          "dataset": "Dolly",
-          "accuracy_pct": 22.45,
-          "efficiency_e-4": 9.77
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FFA-LoRA",
-          "dataset": "Alpaca",
-          "accuracy_pct": 22.68,
-          "efficiency_e-4": 9.77
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FFA-LoRA",
-          "dataset": "Wizard",
-          "accuracy_pct": 28.78,
-          "efficiency_e-4": 9.77
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Dolly",
-          "accuracy_pct": 24.01,
-          "efficiency_e-4": 46.35
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Alpaca",
-          "accuracy_pct": 30.53,
-          "efficiency_e-4": 45.22
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ*]",
-          "dataset": "Wizard",
-          "accuracy_pct": 29.79,
-          "efficiency_e-4": 47.82
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Dolly",
-          "accuracy_pct": 24.1,
-          "efficiency_e-4": 49.38
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Alpaca",
-          "accuracy_pct": 30.24,
-          "efficiency_e-4": 48.24
-        },
-        {
-          "model": "LLaMA-3.2-1B",
-          "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
-          "method": "FLoRIST [τ=0.9]",
-          "dataset": "Wizard",
-          "accuracy_pct": 29.45,
-          "efficiency_e-4": 50.22
-        }
-      ]
-    },
-    "table3": {
-      "reference": "Table 3",
-      "caption": "Communication cost (MB) on TinyLlama, Wizard dataset, homogeneous setting.",
-      "setup": "100 clients, 10 sampled per round, 75 rounds, Dirichlet α = 0.5 non-IID partitions, LoRA on self-attention layers, learning rate 0.0003, MMLU subset of 1,444 questions (Sec. 4.1).",
-      "rows": [
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "Full FT",
-          "upload_mb": 2076.17,
-          "download_mb": 2076.17
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FedIT",
-          "upload_mb": 45.05,
-          "download_mb": 45.05
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRA",
-          "upload_mb": 45.05,
-          "download_mb": 360.45
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FlexLoRA",
-          "upload_mb": 45.05,
-          "download_mb": 45.05
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FFA-LoRA",
-          "upload_mb": 22.52,
-          "download_mb": 28.83
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ*]",
-          "upload_mb": 45.05,
-          "download_mb": 5.95
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST [τ=0.9]",
-          "upload_mb": 45.05,
-          "download_mb": 5.15
-        }
-      ]
-    },
-    "table4": {
-      "reference": "Table 4",
-      "caption": "Server computational cost (FLOPs) on TinyLlama, Wizard dataset, homogeneous setting.",
-      "setup": "100 clients, 10 sampled per round, 75 rounds, Dirichlet α = 0.5 non-IID partitions, LoRA on self-attention layers, learning rate 0.0003, MMLU subset of 1,444 questions (Sec. 4.1).",
-      "rows": [
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FedIT",
-          "server_flops": 4760000.0
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FFA-LoRA",
-          "server_flops": 520000.0
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRA",
-          "server_flops": 0
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FlexLoRA",
-          "server_flops": 3516010000.0
-        },
-        {
-          "model": "TinyLlama",
-          "dataset": "Wizard",
-          "client_config": "homogeneous (all clients rank 16)",
-          "method": "FLoRIST",
-          "server_flops": 466950000.0
-        }
-      ]
-    }
+  "venue": "MLSys 2026",
+  "code_url": "https://github.com/DASS-Lab-Group/FLoRIST",
+  "code_commit_inspected": "100d373025866d148e092a17001e1232dabeeabd",
+  "code_license": "Apache-2.0"
+ },
+ "provenance": "Paper-reported values and paper definitions. Transcribed from the camera-ready PDF; check against the PDF before quoting.",
+ "terms": [
+  {
+   "id": "lora",
+   "label": "LoRA (Low-Rank Adaptation)",
+   "short": "Fine-tuning that freezes a weight matrix $W$ and learns a small low-rank correction $BA$.",
+   "long": "LoRA keeps the pretrained weights $W$ frozen and adds a trainable update $\\Delta W = BA$, where $B$ is $m \\times r$ and $A$ is $r \\times n$ with $r$ much smaller than $m$ and $n$. Only $A$ and $B$ are trained, which cuts the number of trainable parameters dramatically.",
+   "equation": "W' = W + \\Delta W = W + BA,\\quad B \\in \\mathbb{R}^{m\\times r},\\ A \\in \\mathbb{R}^{r\\times n},\\ r \\ll \\min(m,n)",
+   "reference": "Sec. 2 (Finetuning of LLMs)",
+   "levels": {
+    "beginner": "Instead of rewriting a whole textbook, each hospital writes a short set of margin notes that adjust it.",
+    "student": "LoRA freezes the big weight matrix and trains two thin matrices whose product is the update.",
+    "researcher": "$\\Delta W = BA$ with rank at most $r$; $W$ is frozen and only $(A, B)$ are trained and exchanged."
+   },
+   "analogy": "Margin notes on a shared textbook: the book stays the same, only the notes change.",
+   "equation_plain": "W′ = W + ΔW = W + B A,   B ∈ ℝ^{m×r}, A ∈ ℝ^{r×n},   r ≪ min(m, n)"
+  },
+  {
+   "id": "lora_rank",
+   "label": "LoRA rank $r$",
+   "short": "The inner dimension of $B$ and $A$; it limits the rank of the update $BA$.",
+   "long": "The rank $r$ is the number of columns of $B$ and rows of $A$. It is an upper limit: the product $BA$ has rank at most $r$, and the learned update may use fewer directions. In federated settings each client $k$ can use its own rank $r_k$.",
+   "equation": "\\operatorname{rank}(BA) \\le r",
+   "reference": "Sec. 2; Sec. 3 (client-specific rank r_k)",
+   "levels": {
+    "beginner": "How many independent adjustments a client's notes can make.",
+    "student": "The size of the bottleneck between $B$ and $A$; a larger rank allows a richer update but costs more to send.",
+    "researcher": "Upper bound on $\\operatorname{rank}(B_k A_k)$; heterogeneous clients use different $r_k$."
+   },
+   "equation_plain": "rank(B A) ≤ r"
+  },
+  {
+   "id": "adapters",
+   "label": "Adapters $A$ and $B$",
+   "short": "The two trainable LoRA matrices: $B$ ($m \\times r$) and $A$ ($r \\times n$).",
+   "long": "Each adapted weight matrix gets a pair of adapters. $B$ starts at zero and $A$ is randomly initialized, so training starts from the unchanged model. Clients upload their adapters instead of full weight updates.",
+   "equation": "B_k \\in \\mathbb{R}^{m\\times r_k},\\ A_k \\in \\mathbb{R}^{r_k\\times n}",
+   "reference": "Sec. 2; Algorithm 1 (initialization)",
+   "levels": {
+    "beginner": "The two small pieces of a client's notes that get sent to the server.",
+    "student": "$B$ and $A$ are the small trainable matrices; their product is the client's update.",
+    "researcher": "Local factors $(B_k, A_k)$; Algorithm 1 initializes $B_k = 0$, $A_k \\sim \\mathcal{N}(0, \\sigma^2)$ in round 1."
+   },
+   "equation_plain": "B_k ∈ ℝ^{m×r_k},   A_k ∈ ℝ^{r_k×n}"
+  },
+  {
+   "id": "delta_w",
+   "label": "Global update $\\Delta W$",
+   "short": "The weighted average of the clients' updates, the target every aggregation method should reproduce.",
+   "long": "In classical FedAvg the server averages client updates weighted by data size. For LoRA the client update is $B_k A_k$, so the correct aggregate is the weighted sum of these products, an $m \\times n$ matrix the server would ideally never have to build.",
+   "equation": "\\Delta W = \\sum_{k=1}^{K} \\frac{n_k}{N}\\,\\Delta W_k = \\sum_{k=1}^{K} w_k B_k A_k",
+   "reference": "Sec. 2 (FedAvg); Sec. 3",
+   "levels": {
+    "beginner": "The combined lesson learned from all hospitals, weighted by how much data each has.",
+    "student": "The weighted average of every client's BA product; this is what aggregation should produce.",
+    "researcher": "Target $\\Delta W = \\sum_k w_k B_k A_k \\in \\mathbb{R}^{m \\times n}$; FLoRIST obtains its SVD without forming it."
+   },
+   "equation_plain": "ΔW = Σ_k (n_k/N) ΔW_k = Σ_k w_k B_k A_k"
+  },
+  {
+   "id": "aggregation_weight",
+   "label": "Aggregation weight $w_k$",
+   "short": "Each client's share of the total data, $n_k / N$.",
+   "long": "Clients with more local samples count more in the aggregate. The weights are non-negative and sum to one.",
+   "equation": "w_k = \\frac{n_k}{N},\\quad N = \\sum_k n_k,\\quad \\sum_k w_k = 1",
+   "reference": "Sec. 2 (FedAvg); Sec. 3 (weighted stacking)",
+   "levels": {
+    "beginner": "A hospital with more patients gets a bigger say.",
+    "student": "The fraction of all training examples that belong to client $k$.",
+    "researcher": "$w_k = n_k / N$; in FLoRIST the weight multiplies $A_k$ in the stack."
+   },
+   "equation_plain": "w_k = n_k / N,   N = Σ_k n_k,   Σ_k w_k = 1"
+  },
+  {
+   "id": "fedit",
+   "label": "FedIT",
+   "short": "Federated LoRA that averages $B$ and $A$ separately.",
+   "long": "FedIT averages the clients' $B$ matrices and $A$ matrices independently. Multiplying the two averages is generally not the average of the products, so the aggregate contains cross terms. FedIT supports only equal client ranks natively; zero-padding (HetLoRA) is needed for different ranks.",
+   "equation": "B_{FedIT} = \\sum_k w_k B_k,\\quad A_{FedIT} = \\sum_k w_k A_k,\\quad B_{FedIT}A_{FedIT} \\ne \\sum_k w_k B_kA_k \\text{ in general}",
+   "reference": "Sec. 2 (FedIT); Zhang et al. 2024a",
+   "levels": {
+    "beginner": "Averaging the two halves of everyone's notes separately, then gluing the averages together.",
+    "student": "FedIT averages B's and A's separately, which mixes pieces from different clients.",
+    "researcher": "$\\left(\\sum_i w_i B_i\\right)\\left(\\sum_j w_j A_j\\right)$ introduces cross terms $w_i w_j B_i A_j$ ($i \\neq j$) and $w_k^2$ diagonal weights."
+   },
+   "equation_plain": "B_FedIT = Σ_k w_k B_k,   A_FedIT = Σ_k w_k A_k,   B_FedIT A_FedIT ≠ Σ_k w_k B_k A_k in general"
+  },
+  {
+   "id": "cross_term",
+   "label": "Cross term",
+   "short": "A product $B_i A_j$ that mixes one client's $B$ with another client's $A$.",
+   "long": "Expanding FedIT's product gives terms $B_i A_j$ for every pair of clients. Terms with $i \\neq j$ are updates no client learned; the paper calls them cross-term noise.",
+   "equation": "\\Big(\\sum_i w_iB_i\\Big)\\Big(\\sum_j w_jA_j\\Big) = \\sum_{i}\\sum_{j} w_iw_j B_iA_j",
+   "reference": "Sec. 2 (FedIT challenges)",
+   "levels": {
+    "beginner": "A sentence made from the first half of one hospital's note and the second half of another's.",
+    "student": "When $i \\neq j$, $B_i A_j$ combines two different clients' factors and adds an update nobody trained.",
+    "researcher": "Off-diagonal blocks $w_i w_j B_i A_j$, $i \\neq j$, of the expanded FedIT product."
+   },
+   "equation_plain": "(Σ_i w_i B_i)(Σ_j w_j A_j) = Σ_i Σ_j w_i w_j B_i A_j"
+  },
+  {
+   "id": "diagonal_weighting",
+   "label": "Diagonal weighting",
+   "short": "In FedIT's expansion, each client's own product $B_k A_k$ gets weight $w_k^2$ instead of $w_k$.",
+   "long": "Even without cross terms, FedIT's diagonal blocks are scaled by the square of the client weight, so they are not correct in magnitude by themselves. Both diagonal weighting and cross terms contribute to FedIT's error.",
+   "equation": "\\text{diagonal block } k:\\ w_k^2 B_kA_k \\quad\\text{vs. target } w_kB_kA_k",
+   "reference": "Derived from Sec. 2 (FedIT); app explanation",
+   "levels": {
+    "beginner": "Each hospital's own note gets shrunk twice instead of once.",
+    "student": "FedIT's matching-client terms are weighted $w_k^2$ rather than $w_k$.",
+    "researcher": "Diagonal of the expanded product carries $w_k^2$; net error $= \\sum_{i \\neq j} w_i w_j B_i A_j + \\sum_k (w_k^2 - w_k) B_k A_k$."
+   },
+   "equation_plain": "diagonal block k:  w_k² B_k A_k   vs. target  w_k B_k A_k"
+  },
+  {
+   "id": "weighted_stacking",
+   "label": "Weighted stacking",
+   "short": "Concatenating all clients' $B$'s side by side and their weighted $A$'s on top of each other, which reproduces $\\Delta W$ exactly.",
+   "long": "The server stacks $B_{\\text{stack}} = [B_1 \\cdots B_K]$ ($m \\times r$) and $A_{\\text{stack}} = [w_1 A_1; \\ldots; w_K A_K]$ ($r \\times n$), with $r = \\sum_k r_k$. Block multiplication gives exactly $\\sum_k w_k B_k A_k$, with no cross terms. FLoRA uses this aggregation; FLoRIST uses it as its first step.",
+   "equation": "B_{stack} = B_1 \\oplus \\dots \\oplus B_K,\\quad A_{stack} = w_1A_1 \\oplus \\dots \\oplus w_KA_K,\\quad \\Delta W = B_{stack}A_{stack}",
+   "reference": "Sec. 3 (Noise-free aggregation via weighted stacking); Algorithm 1",
+   "levels": {
+    "beginner": "Keep every hospital's notes intact and side by side, each scaled by its weight.",
+    "student": "Stack the B's horizontally and weighted A's vertically; their product is exactly the weighted average.",
+    "researcher": "Block product $B_{\\text{stack}} A_{\\text{stack}} = \\sum_k w_k B_k A_k$; stacked rank $r = \\sum_k r_k$."
+   },
+   "equation_plain": "B_stack = [B_1 … B_K],   A_stack = [w_1 A_1; …; w_K A_K],   ΔW = B_stack A_stack"
+  },
+  {
+   "id": "reduced_svd",
+   "label": "Reduced SVD",
+   "short": "A singular value decomposition that keeps only the min(rows, columns) components.",
+   "long": "FLoRIST decomposes $B_{\\text{stack}}$ and $A_{\\text{stack}}$ separately with SVD (Eq. 1) instead of decomposing the $m \\times n$ matrix $\\Delta W$. A reduced (thin) SVD keeps shapes correct even when the stacked rank $r$ exceeds $m$ or $n$.",
+   "equation": "B_{stack} = U_BS_BV_B^\\top,\\quad A_{stack} = U_AS_AV_A^\\top",
+   "reference": "Sec. 3, Eq. 1",
+   "levels": {
+    "beginner": "Breaking each stack of notes into its main directions and their strengths.",
+    "student": "Factor each stack into rotation × scaling × rotation, keeping only the needed components.",
+    "researcher": "Thin SVDs of the two stacks; $U_B$ is $m \\times \\min(m, r)$, $V_A^\\top$ is $\\min(r, n) \\times n$."
+   },
+   "equation_plain": "B_stack = U_B S_B V_Bᵀ,   A_stack = U_A S_A V_Aᵀ   (Eq. 1)"
+  },
+  {
+   "id": "matrix_q",
+   "label": "Matrix $Q$",
+   "short": "The product $V_B^\\top U_A$ that links the two stack decompositions.",
+   "long": "$Q = V_B^\\top U_A$ captures how the right singular vectors of $B_{\\text{stack}}$ align with the left singular vectors of $A_{\\text{stack}}$. When $r \\le \\min(m, n)$ it is $r \\times r$ and orthogonal; in general its shape is $\\min(m, r) \\times \\min(r, n)$.",
+   "equation": "Q = V_B^\\top U_A",
+   "reference": "Sec. 3, Eq. 2",
+   "levels": {
+    "beginner": "How the directions in the two stacks line up.",
+    "student": "$Q$ connects the two SVDs; it is small because it only involves the stacked rank $r$.",
+    "researcher": "$Q \\in \\mathbb{R}^{\\min(m, r) \\times \\min(r, n)}$; orthogonal when $r \\le \\min(m, n)$ (paper states the $r \\times r$ case)."
+   },
+   "equation_plain": "Q = V_Bᵀ U_A   (Eq. 2)"
+  },
+  {
+   "id": "matrix_p",
+   "label": "Compact matrix $P$",
+   "short": "A small matrix whose singular values equal those of $\\Delta W$.",
+   "long": "$P = S_B Q S_A$ has shape $\\min(m, r) \\times \\min(r, n)$. Since $\\Delta W = U_B P V_A^\\top$ with orthonormal $U_B$ and $V_A$, the SVD of $P$ gives the SVD of $\\Delta W$ without forming the $m \\times n$ matrix. The compute advantage requires $\\sum_k r_k \\ll \\min(m, n)$.",
+   "equation": "P = S_B\\,Q\\,S_A,\\quad \\Delta W = U_B\\,P\\,V_A^\\top",
+   "reference": "Sec. 3, Eq. 2",
+   "levels": {
+    "beginner": "A small summary that has the same main directions as the full combined lesson.",
+    "student": "$P$ is tiny but has the same singular values as $\\Delta W$, so the server never builds the big matrix.",
+    "researcher": "$\\operatorname{SVD}(P) = U_P S_P V_P^\\top$ yields $\\operatorname{SVD}(\\Delta W) = (U_B U_P)\\, S_P\\, (V_P^\\top V_A^\\top)$; advantage needs $\\sum_k r_k \\ll \\min(m, n)$."
+   },
+   "equation_plain": "P = S_B Q S_A,   ΔW = U_B P V_Aᵀ   (Eq. 2)"
+  },
+  {
+   "id": "singular_value",
+   "label": "Singular value",
+   "short": "A non-negative number measuring how strongly a matrix acts along one direction.",
+   "long": "The SVD writes a matrix as a sum of rank-one pieces, each scaled by a singular value $\\sigma_i$ in decreasing order. Large singular values carry most of the update; the paper observes that the singular values of $\\Delta W$ drop off sharply after about 6 to 10 components.",
+   "equation": "M = \\sum_i \\sigma_i u_i v_i^\\top,\\quad \\sigma_1 \\ge \\sigma_2 \\ge \\dots \\ge 0",
+   "reference": "Sec. 3 (Figure 2)",
+   "levels": {
+    "beginner": "How important each direction of the combined lesson is.",
+    "student": "The strengths of a matrix's independent directions, sorted from largest to smallest.",
+    "researcher": "$\\sigma_i(\\Delta W) = \\operatorname{diag}(S_P)$; Figure 2 shows rapid decay in q_proj layers of TinyLlama."
+   },
+   "equation_plain": "M = Σ_i σ_i u_i v_iᵀ,   σ_1 ≥ σ_2 ≥ … ≥ 0"
+  },
+  {
+   "id": "energy",
+   "label": "Energy (cumulative)",
+   "short": "The share of the sum of squared singular values kept by the first $p$ components.",
+   "long": "The energy of the top-$p$ components is $\\sum_{i \\le p} \\sigma_i^2$ divided by the total $\\sum_i \\sigma_i^2$. It equals the fraction of $\\Delta W$'s squared Frobenius norm that a rank-$p$ approximation keeps.",
+   "equation": "E(p) = \\frac{\\sum_{i=1}^{p}\\sigma_i^2}{\\sum_{i=1}^{r^*}\\sigma_i^2}",
+   "reference": "Sec. 3, Eq. 6",
+   "levels": {
+    "beginner": "How much of the combined lesson survives if we keep only the top directions.",
+    "student": "The fraction of the update's total 'size' kept when you keep only the first $p$ directions.",
+    "researcher": "Fraction of $\\lVert \\Delta W \\rVert_F^2$ retained by the rank-$p$ truncation."
+   },
+   "equation_plain": "E(p) = Σ_{i≤p} σ_i² / Σ_i σ_i²"
+  },
+  {
+   "id": "energy_threshold",
+   "label": "Energy threshold $\\tau$",
+   "short": "The tunable fraction of energy FLoRIST must keep, $\\tau \\in (0, 1]$.",
+   "long": "FLoRIST keeps the smallest number of components whose cumulative energy reaches $\\tau$. Lower $\\tau$ gives a smaller global rank and cheaper downloads; $\\tau = 0.9$ is the paper's practical default. The paper also reports a regularizing effect: accuracy peaks at $\\tau$ around 0.91 to 0.92 on TinyLlama/Wizard.",
+   "equation": "p = \\min\\Big\\{p : \\frac{\\sum_{i=1}^{p}\\sigma_i^2}{\\sum_{i=1}^{r^*}\\sigma_i^2} \\ge \\tau\\Big\\}",
+   "reference": "Sec. 3, Eq. 6; Sec. 4.2; Figure 7",
+   "levels": {
+    "beginner": "How much of the combined lesson we insist on keeping.",
+    "student": "A dial: higher $\\tau$ keeps more directions (bigger download), lower $\\tau$ keeps fewer.",
+    "researcher": "Energy-based truncation level; $\\tau^*$ tuned in $[0.80, 0.99]$, $\\tau = 0.9$ fixed default."
+   },
+   "equation_plain": "p = smallest p with Σ_{i≤p} σ_i² / Σ_i σ_i² ≥ τ   (Eq. 6)"
+  },
+  {
+   "id": "selected_rank",
+   "label": "Selected rank $p$",
+   "short": "The global adapter rank chosen by the energy threshold.",
+   "long": "$p$ is the smallest rank whose cumulative energy reaches $\\tau$. It can differ per layer, and the paper finds it is typically much smaller than the clients' ranks (as low as 6 to 10 even when clients use rank up to 64).",
+   "equation": "p \\le \\operatorname{rank}(\\Delta W) \\le \\sum_k r_k",
+   "reference": "Sec. 3; Sec. 4.5 (Figure 6)",
+   "levels": {
+    "beginner": "How many directions the shared update ends up keeping.",
+    "student": "The rank of the global adapters, picked automatically by the threshold.",
+    "researcher": "Per-layer $p_l$ from Eq. 6; Figure 6 shows layer-wise optimal ranks for q_proj and v_proj."
+   },
+   "equation_plain": "p ≤ rank(ΔW) ≤ Σ_k r_k"
+  },
+  {
+   "id": "global_adapters",
+   "label": "Global adapters $B_g$, $A_g$",
+   "short": "The single pair of rank-p adapters the server sends to every client.",
+   "long": "From $\\operatorname{SVD}(P) = U_P S_P V_P^\\top$, FLoRIST builds $B_g = (U_B U_P)_{[:,\\,:p]}\\, (S_P)_{[:p,\\,:p]}$ and $A_g = (V_P^\\top V_A^\\top)_{[:p,\\,:]}$. Their product is the best rank-$p$ approximation of $\\Delta W$.",
+   "equation": "B_g = (U_BU_P)_{[:, :p]}(S_P)_{[:p,:p]},\\quad A_g = (V_P^\\top V_A^\\top)_{[:p,:]}",
+   "reference": "Sec. 3, Eq. 3; Algorithm 1",
+   "levels": {
+    "beginner": "The compact shared notes every hospital downloads.",
+    "student": "$B_g$ and $A_g$ are the compressed global update; all clients download the same pair.",
+    "researcher": "Rank-$p$ factorization: $B_g A_g$ is the best rank-$p$ approximation of $\\Delta W$ (Eckart–Young–Mirsky)."
+   },
+   "equation_plain": "B_g = (U_B U_P)[:, :p] S_P[:p, :p],   A_g = (V_Pᵀ V_Aᵀ)[:p, :]   (Eq. 3)"
+  },
+  {
+   "id": "rank_matching",
+   "label": "Rank matching (pad / truncate)",
+   "short": "How a client fits the rank-$p$ global adapters to its own rank $r_k$.",
+   "long": "If $p < r_k$, the client zero-pads $B_g$ with columns and $A_g$ with rows; if $p > r_k$, it keeps the first $r_k$ columns of $B_g$ and rows of $A_g$. Zero-padded components stay inactive during that round's local training under ordinary gradient-based optimization, so a client with $r_k > p$ trains an adapter of rank at most $p$ in that round; the global rank selected later can still grow.",
+   "equation": "p<r_k:\\ B_k=[B_g\\,|\\,0],\\ A_k=\\begin{bmatrix}A_g\\\\0\\end{bmatrix};\\quad p>r_k:\\ B_k=(B_g)_{[:, :r_k]},\\ A_k=(A_g)_{[:r_k,:]}",
+   "reference": "Algorithm 1 (client side); Appendix C (Training flow)",
+   "levels": {
+    "beginner": "Each hospital trims or pads the shared notes to fit its own notebook.",
+    "student": "Clients pad with zeros or cut off extra components so the global adapters fit their rank.",
+    "researcher": "Zero-padding is exact (BA unchanged) but padded components get zero gradient within the round."
+   },
+   "equation_plain": "p < r_k: B_k = [B_g | 0], A_k = [A_g; 0]      p > r_k: B_k = B_g[:, :r_k], A_k = A_g[:r_k, :]"
+  },
+  {
+   "id": "eckart_young_bound",
+   "label": "Eckart–Young–Mirsky bound",
+   "short": "Keeping the top-p singular components gives the smallest possible rank-p error.",
+   "long": "The best rank-p approximation of a matrix in Frobenius norm keeps its top-p singular components, and the error equals the square root of the discarded energy. FLoRIST's reconstruction error is therefore bounded by the tail singular values.",
+   "equation": "\\|\\Delta W - B_gA_g\\|_F \\le \\Big(\\sum_{i=p+1}^{r^*}\\sigma_i^2\\Big)^{1/2}",
+   "reference": "Sec. 3 (Theoretical analysis), Eq. 5",
+   "levels": {
+    "beginner": "Dropping the least important directions loses as little as possible.",
+    "student": "The error from compressing to rank $p$ is exactly the size of what was thrown away.",
+    "researcher": "Truncated SVD is optimal in $\\lVert \\cdot \\rVert_F$; FLoRIST's error equals the tail energy (Eq. 5)."
+   },
+   "equation_plain": "‖ΔW − B_g A_g‖_F ≤ ( Σ_{i>p} σ_i² )^{1/2}   (Eq. 5)"
+  },
+  {
+   "id": "lora_scaling",
+   "label": "LoRA scaling $\\alpha / r$",
+   "short": "The constant LoRA multiplies BA by during training.",
+   "long": "Implementations scale the adapter output by $\\alpha / r$. If clients use different scales, their products must be scaled before aggregation. The official FLoRIST code uses $\\alpha = 2 r_k$ for heterogeneous clients and $\\alpha = 32$ with $r = 16$ for homogeneous clients, so the scale is 2 for every client.",
+   "equation": "\\Delta W_k = \\frac{\\alpha}{r_k} B_kA_k",
+   "reference": "Official code (main.py LoraConfig); not discussed in the paper",
+   "levels": {
+    "beginner": "A fixed volume knob on each client's notes; it must be the same for everyone.",
+    "student": "LoRA multiplies $BA$ by $\\alpha / r$; keeping it equal across clients keeps aggregation correct.",
+    "researcher": "Scale $s_k = \\alpha / r_k = 2$ for all clients in the official runs; aggregation can ignore it."
+   },
+   "equation_plain": "ΔW_k = (α / r_k) B_k A_k"
+  },
+  {
+   "id": "heterogeneous_ranks",
+   "label": "Heterogeneous client ranks",
+   "short": "Clients use different LoRA ranks, usually matched to their compute capacity.",
+   "long": "The paper's heterogeneous setting uses a heavy-tail distribution with $16\\times$ rank disparity: of 100 clients, 40 use rank 4, 20 rank 8, 20 rank 16, 10 rank 32 and 10 rank 64.",
+   "equation": "r_k \\in \\{4, 8, 16, 32, 64\\}",
+   "reference": "Sec. 4.1 (Datasets and configurations)",
+   "levels": {
+    "beginner": "Some hospitals have big notebooks, most have small ones.",
+    "student": "Different clients can afford different adapter sizes.",
+    "researcher": "Heavy-tail rank distribution 40/20/20/10/10 over ranks 4/8/16/32/64."
+   },
+   "equation_plain": "r_k ∈ {4, 8, 16, 32, 64}"
+  },
+  {
+   "id": "communication_cost",
+   "label": "Communication cost (download)",
+   "short": "In the paper: the parameters sent from the server to the selected clients per round.",
+   "long": "The paper's communication cost refers only to the download: the total number of parameters the server transmits to the selected clients in a round. Table 3 also reports upload and download in MB.",
+   "equation": "\\text{cost} = \\text{total parameters downloaded per round}",
+   "reference": "Sec. 4.1 (Communication cost and efficiency definitions); Table 3",
+   "levels": {
+    "beginner": "How much the server sends back to the hospitals each round.",
+    "student": "The size of what clients download each round; FLoRIST shrinks it by sending rank-p adapters.",
+    "researcher": "Download-only parameter count per round; MB conversions in Table 3 and Appendix F."
+   },
+   "equation_plain": "cost = total parameters downloaded per round"
+  },
+  {
+   "id": "communication_efficiency",
+   "label": "Communication efficiency",
+   "short": "The inverse of the download cost, approximated by the inverse of the total download rank.",
+   "long": "Defined as $1 / \\text{total parameters downloaded}$ and approximated by $1 / \\text{total download rank}$ (Sec. 4.1). Appendix F states it as $1 / (\\text{total rank} / 2)$. Table 2 reports it in units of $10^{-4}$.",
+   "equation": "\\text{Eff.} = \\frac{1}{\\text{Total Parameters Downloaded}} \\approx \\frac{1}{\\text{Total Download Rank}}",
+   "reference": "Sec. 4.1; Table 2; Appendix F (Metrics)",
+   "levels": {
+    "beginner": "A score where higher means less data to download.",
+    "student": "One over the download size; Table 2 lists it $\\times 10^{-4}$.",
+    "researcher": "Two stated definitions (1/rank vs 1/(rank/2)); see verification notes."
+   },
+   "equation_plain": "Eff. = 1 / total parameters downloaded ≈ 1 / total download rank"
+  },
+  {
+   "id": "flora",
+   "label": "FLoRA",
+   "short": "Federated LoRA that stacks client adapters and sends the full stack back.",
+   "long": "FLoRA uses stacking for exact aggregation and supports heterogeneous ranks, but the downloaded stack has rank $\\sum_k r_k$, so download cost grows with the number of clients. Its clients merge the downloaded adapters into the frozen model and reinitialize local adapters each round.",
+   "equation": "\\text{download rank} = \\sum_k r_k",
+   "reference": "Sec. 2 (FLoRA); Wang et al. 2024",
+   "levels": {
+    "beginner": "Every hospital receives everyone's notes in full.",
+    "student": "Exact stacking, but the download grows with every extra client.",
+    "researcher": "Stacked rank $\\sum_k r_k$ broadcast; merge-and-reinitialize client protocol."
+   },
+   "equation_plain": "download rank = Σ_k r_k"
+  },
+  {
+   "id": "flexlora",
+   "label": "FlexLoRA",
+   "short": "Federated LoRA that forms the full $\\Delta W$, runs an SVD, and sends each client a rank-$r_k$ slice.",
+   "long": "FlexLoRA reconstructs $\\Delta W \\in \\mathbb{R}^{m \\times n}$ on the server, applies a full SVD, and redistributes the top $r_k$ components to each client. This needs large server memory and compute, and low-rank clients may miss important components.",
+   "equation": "\\Delta W = U S V^\\top,\\quad B_k = U_{[:, :r_k]}S_{[:r_k,:r_k]},\\ A_k = V^\\top_{[:r_k,:]}",
+   "reference": "Sec. 2 (FlexLoRA); Bai et al. 2024; Appendix A",
+   "levels": {
+    "beginner": "The server rewrites the full combined lesson, then sends each hospital a summary sized to its notebook.",
+    "student": "Full SVD of the big update, with a different-size slice per client.",
+    "researcher": "Explicit $m \\times n$ $\\Delta W$ and full SVD: $O(L \\cdot \\min(m, n) \\cdot mn)$ server cost."
+   },
+   "equation_plain": "ΔW = U S Vᵀ,   B_k = U[:, :r_k] S[:r_k, :r_k],   A_k = Vᵀ[:r_k, :]"
+  },
+  {
+   "id": "ffa_lora",
+   "label": "FFA-LoRA",
+   "short": "Federated LoRA that freezes $A$ at a shared initialization and trains only $B$.",
+   "long": "With $A$ frozen and shared, averaging the $B$'s gives an exact aggregate and halves communication, but only half the LoRA parameters train, which can slow convergence. Heterogeneous ranks need zero-padding.",
+   "equation": "\\Delta W_k = B_kA_{init},\\quad \\Delta W = \\Big(\\sum_k w_kB_k\\Big)A_{init}",
+   "reference": "Sec. 2 (FFA-LoRA); Sun et al. 2024",
+   "levels": {
+    "beginner": "Everyone shares the same second half of the notes and only writes the first half.",
+    "student": "Freeze $A$ for everyone so averaging $B$ is exact.",
+    "researcher": "Exact aggregation via shared frozen $A_{\\text{init}}$; half the trainable parameters."
+   },
+   "equation_plain": "ΔW_k = B_k A_init,   ΔW = (Σ_k w_k B_k) A_init"
   }
+ ],
+ "reported_results": {
+  "table2": {
+   "reference": "Table 2",
+   "caption": "MMLU accuracy (%) and communication efficiency (×10⁻⁴) after 75 rounds.",
+   "setup": "100 clients, 10 sampled per round, 75 rounds, Dirichlet α = 0.5 non-IID partitions, LoRA on self-attention layers, learning rate 0.0003, MMLU subset of 1,444 questions (Sec. 4.1).",
+   "notes": [
+    "FLoRIST [τ*] uses a threshold tuned per configuration by binary search over [0.80, 0.99]; it is a diagnostic upper bound.",
+    "FLoRIST [τ=0.9] uses one fixed threshold for all configurations."
+   ],
+   "rows": [
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FedIT",
+     "dataset": "Dolly",
+     "accuracy_pct": 27.46,
+     "efficiency_e-4": 14.2
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FedIT",
+     "dataset": "Alpaca",
+     "accuracy_pct": 28.35,
+     "efficiency_e-4": 14.2
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FedIT",
+     "dataset": "Wizard",
+     "accuracy_pct": 36.61,
+     "efficiency_e-4": 14.2
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 28.99,
+     "efficiency_e-4": 1.78
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 28.99,
+     "efficiency_e-4": 1.78
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 34.2,
+     "efficiency_e-4": 1.78
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FlexLoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 28.06,
+     "efficiency_e-4": 14.2
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FlexLoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.22,
+     "efficiency_e-4": 14.2
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FlexLoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 39.75,
+     "efficiency_e-4": 14.2
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FFA-LoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 27.79,
+     "efficiency_e-4": 28.4
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FFA-LoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 31.58,
+     "efficiency_e-4": 28.4
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FFA-LoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 36.01,
+     "efficiency_e-4": 28.4
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Dolly",
+     "accuracy_pct": 29.16,
+     "efficiency_e-4": 53.54
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Alpaca",
+     "accuracy_pct": 32.26,
+     "efficiency_e-4": 35.08
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Wizard",
+     "accuracy_pct": 40.95,
+     "efficiency_e-4": 54.38
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Dolly",
+     "accuracy_pct": 30.94,
+     "efficiency_e-4": 23.48
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Alpaca",
+     "accuracy_pct": 31.68,
+     "efficiency_e-4": 60.06
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Wizard",
+     "accuracy_pct": 38.92,
+     "efficiency_e-4": 63.09
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FedIT (zero-pad)",
+     "dataset": "Dolly",
+     "accuracy_pct": 25.73,
+     "efficiency_e-4": 3.55
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FedIT (zero-pad)",
+     "dataset": "Alpaca",
+     "accuracy_pct": 31.04,
+     "efficiency_e-4": 3.55
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FedIT (zero-pad)",
+     "dataset": "Wizard",
+     "accuracy_pct": 44.19,
+     "efficiency_e-4": 3.55
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 27.2,
+     "efficiency_e-4": 0.5
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 28.58,
+     "efficiency_e-4": 0.5
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 33.74,
+     "efficiency_e-4": 0.5
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FlexLoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 28.49,
+     "efficiency_e-4": 11.96
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FlexLoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.61,
+     "efficiency_e-4": 11.96
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FlexLoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 36.39,
+     "efficiency_e-4": 11.96
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FFA-LoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 18.54,
+     "efficiency_e-4": 7.1
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FFA-LoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 23.19,
+     "efficiency_e-4": 7.1
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FFA-LoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 23.75,
+     "efficiency_e-4": 7.1
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Dolly",
+     "accuracy_pct": 28.87,
+     "efficiency_e-4": 37.87
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Alpaca",
+     "accuracy_pct": 31.33,
+     "efficiency_e-4": 45.09
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Wizard",
+     "accuracy_pct": 38.2,
+     "efficiency_e-4": 13.6
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Dolly",
+     "accuracy_pct": 27.69,
+     "efficiency_e-4": 34.93
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.69,
+     "efficiency_e-4": 34.9
+    },
+    {
+     "model": "TinyLlama",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Wizard",
+     "accuracy_pct": 41.51,
+     "efficiency_e-4": 36.16
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FedIT",
+     "dataset": "Dolly",
+     "accuracy_pct": 25.0,
+     "efficiency_e-4": 19.5
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FedIT",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.44,
+     "efficiency_e-4": 19.5
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FedIT",
+     "dataset": "Wizard",
+     "accuracy_pct": 30.48,
+     "efficiency_e-4": 19.5
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 22.48,
+     "efficiency_e-4": 2.44
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.16,
+     "efficiency_e-4": 2.44
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 28.57,
+     "efficiency_e-4": 2.44
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FlexLoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 27.39,
+     "efficiency_e-4": 19.5
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FlexLoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.24,
+     "efficiency_e-4": 19.5
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FlexLoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 30.03,
+     "efficiency_e-4": 19.5
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FFA-LoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 26.15,
+     "efficiency_e-4": 39.06
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FFA-LoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.18,
+     "efficiency_e-4": 39.06
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FFA-LoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 28.4,
+     "efficiency_e-4": 39.06
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Dolly",
+     "accuracy_pct": 28.28,
+     "efficiency_e-4": 51.71
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Alpaca",
+     "accuracy_pct": 30.46,
+     "efficiency_e-4": 33.3
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Wizard",
+     "accuracy_pct": 29.31,
+     "efficiency_e-4": 51.19
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Dolly",
+     "accuracy_pct": 29.48,
+     "efficiency_e-4": 33.64
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.73,
+     "efficiency_e-4": 33.42
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Wizard",
+     "accuracy_pct": 29.62,
+     "efficiency_e-4": 51.19
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FedIT (zero-pad)",
+     "dataset": "Dolly",
+     "accuracy_pct": 21.41,
+     "efficiency_e-4": 4.88
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FedIT (zero-pad)",
+     "dataset": "Alpaca",
+     "accuracy_pct": 28.37,
+     "efficiency_e-4": 4.88
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FedIT (zero-pad)",
+     "dataset": "Wizard",
+     "accuracy_pct": 28.42,
+     "efficiency_e-4": 4.88
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 23.85,
+     "efficiency_e-4": 2.06
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 30.15,
+     "efficiency_e-4": 2.06
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 27.73,
+     "efficiency_e-4": 2.06
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FlexLoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 26.74,
+     "efficiency_e-4": 16.44
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FlexLoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 29.95,
+     "efficiency_e-4": 16.44
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FlexLoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 29.13,
+     "efficiency_e-4": 16.44
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FFA-LoRA",
+     "dataset": "Dolly",
+     "accuracy_pct": 22.45,
+     "efficiency_e-4": 9.77
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FFA-LoRA",
+     "dataset": "Alpaca",
+     "accuracy_pct": 22.68,
+     "efficiency_e-4": 9.77
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FFA-LoRA",
+     "dataset": "Wizard",
+     "accuracy_pct": 28.78,
+     "efficiency_e-4": 9.77
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Dolly",
+     "accuracy_pct": 24.01,
+     "efficiency_e-4": 46.35
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Alpaca",
+     "accuracy_pct": 30.53,
+     "efficiency_e-4": 45.22
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ*]",
+     "dataset": "Wizard",
+     "accuracy_pct": 29.79,
+     "efficiency_e-4": 47.82
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Dolly",
+     "accuracy_pct": 24.1,
+     "efficiency_e-4": 49.38
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Alpaca",
+     "accuracy_pct": 30.24,
+     "efficiency_e-4": 48.24
+    },
+    {
+     "model": "LLaMA-3.2-1B",
+     "client_config": "heterogeneous (ranks 4/8/16/32/64: 40/20/20/10/10 clients)",
+     "method": "FLoRIST [τ=0.9]",
+     "dataset": "Wizard",
+     "accuracy_pct": 29.45,
+     "efficiency_e-4": 50.22
+    }
+   ]
+  },
+  "table3": {
+   "reference": "Table 3",
+   "caption": "Communication cost (MB) on TinyLlama, Wizard dataset, homogeneous setting.",
+   "setup": "100 clients, 10 sampled per round, 75 rounds, Dirichlet α = 0.5 non-IID partitions, LoRA on self-attention layers, learning rate 0.0003, MMLU subset of 1,444 questions (Sec. 4.1).",
+   "rows": [
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "Full FT",
+     "upload_mb": 2076.17,
+     "download_mb": 2076.17
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FedIT",
+     "upload_mb": 45.05,
+     "download_mb": 45.05
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRA",
+     "upload_mb": 45.05,
+     "download_mb": 360.45
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FlexLoRA",
+     "upload_mb": 45.05,
+     "download_mb": 45.05
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FFA-LoRA",
+     "upload_mb": 22.52,
+     "download_mb": 28.83
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ*]",
+     "upload_mb": 45.05,
+     "download_mb": 5.95
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST [τ=0.9]",
+     "upload_mb": 45.05,
+     "download_mb": 5.15
+    }
+   ]
+  },
+  "table4": {
+   "reference": "Table 4",
+   "caption": "Server computational cost (FLOPs) on TinyLlama, Wizard dataset, homogeneous setting.",
+   "setup": "100 clients, 10 sampled per round, 75 rounds, Dirichlet α = 0.5 non-IID partitions, LoRA on self-attention layers, learning rate 0.0003, MMLU subset of 1,444 questions (Sec. 4.1).",
+   "rows": [
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FedIT",
+     "server_flops": 4760000.0
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FFA-LoRA",
+     "server_flops": 520000.0
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRA",
+     "server_flops": 0
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FlexLoRA",
+     "server_flops": 3516010000.0
+    },
+    {
+     "model": "TinyLlama",
+     "dataset": "Wizard",
+     "client_config": "homogeneous (all clients rank 16)",
+     "method": "FLoRIST",
+     "server_flops": 466950000.0
+    }
+   ]
+  }
+ }
 }

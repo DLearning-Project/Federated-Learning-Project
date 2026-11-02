@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { CloseIcon } from '../../../components/Icons';
 import { ApiErrorState, LoadingState } from '../../../components/StatusMessage';
 import { useLab } from './LabContext';
+import { MathBlock, Rich, toPlain } from './Math';
 
 /** Side drawer with a term's paper explanation, or the full glossary. */
 export function TermDrawer() {
@@ -23,9 +24,11 @@ export function TermDrawer() {
   const showAnalogy = level === 'beginner' || level === null;
 
   return (
-    <div role="dialog" aria-modal="false" aria-label={title} className="lm-drawer">
+    <div role="dialog" aria-modal="false" aria-label={toPlain(title)} className="lm-drawer">
       <div className="lm-drawer-head">
-        <h2>{title}</h2>
+        <h2>
+          <Rich text={title} />
+        </h2>
         <button ref={closeRef} type="button" className="btn btn-secondary lm-icon-btn" aria-label="Close" onClick={closeDrawer}>
           <CloseIcon />
         </button>
@@ -41,8 +44,12 @@ export function TermDrawer() {
             {glossary.terms.map((g) => (
               <li key={g.id}>
                 <button type="button" onClick={() => openTerm(g.id)}>
-                  <strong>{g.label}</strong>
-                  <span className="muted small">{g.short}</span>
+                  <strong>
+                    <Rich text={g.label} />
+                  </strong>
+                  <span className="muted small">
+                    <Rich text={g.short} />
+                  </span>
                 </button>
               </li>
             ))}
@@ -56,21 +63,25 @@ export function TermDrawer() {
           <span className="lm-chip">Paper: {t.reference}</span>
           <div>
             <div className="lm-kicker">In short</div>
-            <p>{level ? t.levels[level] : t.short}</p>
+            <p>
+              <Rich text={level ? t.levels[level] : t.short} />
+            </p>
           </div>
           {showLong && (
             <div>
               <div className="lm-kicker">From the paper</div>
-              <p>{t.long}</p>
+              <p>
+                <Rich text={t.long} />
+              </p>
             </div>
           )}
-          <div className="lm-equation" aria-label="Equation">
-            {t.equation_plain}
-          </div>
+          <MathBlock tex={t.equation} label={`Equation: ${t.equation_plain}`} />
           {showAnalogy && t.analogy && (
             <div className="lm-analogy">
               <div className="lm-kicker">Analogy</div>
-              <p>{t.analogy}</p>
+              <p>
+                <Rich text={t.analogy} />
+              </p>
             </div>
           )}
           <button type="button" className="btn btn-ghost lm-link-btn" onClick={openGlossary}>

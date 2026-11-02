@@ -45,12 +45,12 @@ UNITS = {
 }
 
 ASSUMPTIONS = [
-    "One weight matrix W (d_out × d_in) is adapted with A (r × d_in) and B (d_out × r).",
-    "The base model stays frozen; only A and B are trained and exchanged.",
+    r"One weight matrix $W$ ($d_{\text{out}} \times d_{\text{in}}$) is adapted with $A$ ($r \times d_{\text{in}}$) and $B$ ($d_{\text{out}} \times r$).",
+    r"The base model stays frozen; only $A$ and $B$ are trained and exchanged.",
     "Upload and download carry the same adapter size.",
     "All selected clients participate in every round.",
     "Initial distribution of the base model to clients is excluded.",
-    "Rank r is a limit: the product B·A has rank at most r, and may be lower in practice.",
+    r"Rank $r$ is a limit: the product $BA$ has rank at most $r$, and may be lower in practice.",
     "No compression, encryption, or protocol overhead is counted.",
 ]
 

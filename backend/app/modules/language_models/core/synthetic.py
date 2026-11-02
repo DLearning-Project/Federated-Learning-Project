@@ -26,7 +26,7 @@ CLIENT_RANK = 2
 CLIENT_SCALE = 0.3
 
 ASSUMPTIONS = [
-    "The adapted matrix is the toy model's W_0 (16 x 32), not an LLM layer.",
+    r"The adapted matrix is the toy model's $W_0$ ($16 \times 32$), not an LLM layer.",
     "Client adapters are SYNTHETIC stand-ins for trained ones: each client's update is a shared rank-3 shift plus a smaller rank-2 client-specific part, factored at the client's rank.",
     "No local training happens yet; the toy experiment (build step 5) will replace these adapters.",
     "The aggregation (FedIT, exact weighted stacking, FLoRIST) is computed live by the backend.",

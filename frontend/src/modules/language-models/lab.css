@@ -144,25 +144,29 @@
 }
 
 .lm-tooltip {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 30;
+  /* Rendered into document.body and placed by Term.tsx, so no card can clip it. */
+  position: fixed;
+  z-index: 60;
+  display: block;
+  box-sizing: border-box;
   width: max-content;
-  max-width: 18rem;
+  max-width: min(20rem, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--color-ink);
   color: var(--color-surface);
+  font-family: var(--font-sans);
   font-size: 0.9rem;
   font-weight: 400;
   line-height: var(--leading-body);
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
   white-space: normal;
-}
-
-.lm-tooltip.right {
-  left: auto;
-  right: 0;
+  overflow-wrap: anywhere;
+  pointer-events: none;
 }
 
 .lm-drawer {
@@ -215,27 +219,6 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-muted);
-}
-
-.lm-equation {
-  padding: var(--space-3) var(--space-4);
-  border-left: 3px solid var(--color-yellow);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  overflow-x: auto;
-}
-
-.lm-math {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-top: var(--space-3);
-}
-
-.lm-math div {
-  white-space: pre-wrap;
 }
 
 .lm-analogy {
@@ -373,8 +356,14 @@
 
 .lm-sim-head {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.lm-sim-title {
+  display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
@@ -385,8 +374,7 @@
 }
 
 .lm-sim-head p {
-  max-width: 48rem;
-  margin-top: var(--space-2);
+  max-width: none;
 }
 
 .lm-scenario {
@@ -502,6 +490,7 @@
 
 .lm-check {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
 }
@@ -853,4 +842,114 @@
 .lm-table caption {
   margin-bottom: var(--space-2);
   text-align: left;
+}
+
+/* Page header text spans the full content width, flush with the cards below
+   (overrides the shared 50rem cap only inside this module). */
+.lm-lab .page-header {
+  max-width: none;
+}
+
+/* ---------- Math (KaTeX) ---------- */
+
+/* KaTeX's default 1.21em looks large next to Inter; 1.06em matches its x-height. */
+.lm-math-inline .katex,
+.lm-math-display .katex {
+  font-size: 1.06em;
+}
+
+/* Inline math never breaks inside a formula and sits on the text baseline. */
+.lm-math-inline {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 0.08em;
+  white-space: nowrap;
+  vertical-align: baseline;
+  line-height: 1;
+}
+
+/* Centered display math with room around it. A formula wider than the
+   container scrolls sideways inside its own box instead of being clipped. */
+.lm-math-display {
+  max-width: 100%;
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-1);
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Display equations wrap after relations/operators when the line is too long. */
+.lm-math-display .katex {
+  line-height: 1.7;
+  white-space: normal;
+}
+
+.lm-math-display:focus-visible {
+  outline: var(--focus-ring, 2px solid var(--color-ink));
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Panel holding the "Show the math" equations. */
+.lm-math-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-left: 3px solid var(--color-yellow);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.lm-math-row p {
+  margin: 0;
+}
+
+.lm-math-row .lm-math-display {
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.lm-math-row:last-child .lm-math-display {
+  margin-bottom: 0;
+}
+
+/* Equations in the term drawer and tooltips. */
+.lm-drawer .lm-math-display {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--color-yellow);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.lm-tooltip .katex {
+  color: inherit;
+}
+
+.lm-question .lm-math-display {
+  margin: var(--space-2) 0;
+}
+
+/* Math symbols inside SVG charts use KaTeX's math italic font. */
+.lm-svg-math {
+  font-family: KaTeX_Math, 'Times New Roman', serif;
+  font-style: italic;
+}
+
+@media (max-width: 600px) {
+  .lm-math-panel {
+    padding: var(--space-3);
+  }
+}
+
+.lm-math-fit {
+  display: block;
+}
+
+.lm-nowrap {
+  white-space: nowrap;
 }

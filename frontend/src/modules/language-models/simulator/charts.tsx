@@ -1,6 +1,9 @@
 import { formatBytes } from '../../../components/format';
 import type { MethodId, MethodPayload } from '../types';
 
+/** Unicode subscript digits for native SVG tooltips, which cannot render KaTeX (σ₁, σ₁₂). */
+const subscript = (n: number) => String(n).replace(/\d/g, (d) => '₀₁₂₃₄₅₆₇₈₉'[Number(d)]);
+
 export const METHOD_LABEL: Record<MethodId, string> = {
   florist: 'FLoRIST',
   fedit: 'FedIT',
@@ -59,7 +62,7 @@ export function SpectrumChart({
           fill={i < p ? 'var(--color-orange)' : 'var(--color-chart-light)'}
           stroke={i < p ? 'none' : 'var(--color-chart-gray)'}
         >
-          <title>{`σ${i + 1} = ${v.toPrecision(3)} (${i < p ? 'kept' : 'discarded'}), cumulative energy ${(energy[i] * 100).toFixed(1)}%`}</title>
+          <title>{`σ${subscript(i + 1)} = ${v.toPrecision(3)} (${i < p ? 'kept' : 'discarded'}), cumulative energy ${(energy[i] * 100).toFixed(1)}%`}</title>
         </rect>
       ))}
       <path d={line} fill="none" stroke="var(--color-ink)" strokeWidth={2} />
@@ -68,18 +71,24 @@ export function SpectrumChart({
       ))}
       <line x1={pad.l} x2={W - pad.r} y1={ye(tau)} y2={ye(tau)} stroke="var(--color-orange-text)" strokeDasharray="5 4" />
       <text x={W - pad.r + 4} y={ye(tau) + 4} className="label-muted">
-        {plain ? 'target' : 'τ'}
+        {plain ? 'target' : <tspan className="lm-svg-math">τ</tspan>}
       </text>
       {p > 0 && p < values.length && (
         <>
           <line x1={cutX} x2={cutX} y1={pad.t} y2={pad.t + ih} stroke="var(--color-ink)" strokeDasharray="2 3" />
           <text x={cutX + 4} y={pad.t + ih * 0.55}>
-            {plain ? `keep ${p}` : `p = ${p}`}
+            {plain ? (
+              `keep ${p}`
+            ) : (
+              <>
+                <tspan className="lm-svg-math">p</tspan> = {p}
+              </>
+            )}
           </text>
         </>
       )}
       <text x={pad.l - 8} y={pad.t + 8} textAnchor="end" className="label-muted">
-        {plain ? '' : 'σ'}
+        {plain ? '' : <tspan className="lm-svg-math">σ</tspan>}
       </text>
       <text x={W - pad.r + 4} y={pad.t + 8} className="label-muted">
         100%
@@ -88,7 +97,7 @@ export function SpectrumChart({
         0%
       </text>
       <text x={pad.l + iw / 2} y={H - 8} textAnchor="middle" className="label-muted">
-        {xLabel}
+        {xLabel.length === 1 ? <tspan className="lm-svg-math">{xLabel}</tspan> : xLabel}
       </text>
     </svg>
   );

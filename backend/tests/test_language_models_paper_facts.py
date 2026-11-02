@@ -44,3 +44,22 @@ def test_tables_3_and_4_present_with_configuration():
         assert r["model"] == "TinyLlama" and r["dataset"] == "Wizard"
     for table in ("table2", "table3", "table4"):
         assert FACTS["reported_results"][table]["reference"]
+
+
+def _strings(node):
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for value in node.values():
+            yield from _strings(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _strings(value)
+
+
+def test_glossary_math_markup_is_balanced():
+    """Glossary text marks math with $…$ for KaTeX; an odd count breaks rendering."""
+    facts = json.loads(FACTS_PATH.read_text())
+    for term in facts["terms"]:
+        for text in _strings({k: v for k, v in term.items() if k not in ("equation", "equation_plain")}):
+            assert text.count("$") % 2 == 0, f"{term['id']}: unbalanced $ in {text!r}"

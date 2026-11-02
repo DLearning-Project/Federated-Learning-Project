@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useModuleState } from '../../../app/AppStateContext';
 import { formatBytes, formatNumber, formatPercent } from '../../../components/format';
-import { AssumptionsList } from '../../../components/Results';
 import { ApiErrorState, EmptyState, LoadingState, StatusMessage } from '../../../components/StatusMessage';
 import { useApiAction, type ActionState } from '../../../hooks/useApiAction';
 import { fetchPaper, simulateRound } from '../api';
 import { useLab } from '../lab/LabContext';
 import { byLevel } from '../lab/levels';
+import { M, MathAssumptions, MathBlock, Rich, rich, toPlain } from '../lab/Math';
 import { Term } from '../lab/Term';
 import { ClassMixGrid, DownloadBars, METHOD_LABEL, SpectrumChart } from '../simulator/charts';
 import { classesHeld, EXPERIMENTS, payloadOf, pct, sum, type Experiment } from '../simulator/experiments';
@@ -30,8 +30,8 @@ const TAB_LABELS: Record<Tab, { beginner: string; student: string; researcher: s
   },
   spectrum: {
     beginner: 'What gets kept',
-    student: 'Singular values (τ)',
-    researcher: 'Spectrum σ(P), τ',
+    student: 'Singular values ($\\tau$)',
+    researcher: 'Spectrum $\\sigma(P)$, $\\tau$',
   },
   download: {
     beginner: 'Download size',
@@ -166,22 +166,24 @@ export default function SimulatorPage() {
   return (
     <div className="page lm-sim">
       <header className="lm-sim-head">
-        <div>
-          <span className="eyebrow">Page 4 of 4 · Language models</span>
+        <span className="eyebrow">Page 4 of 4 · Language models</span>
+        <div className="lm-sim-title">
           <h1>FLoRIST Simulator</h1>
-          <p className="muted">
-            {byLevel(lvl, {
+          <span className="pill">
+            <span className="pill-dot ok" /> Computed live · synthetic adapters
+          </span>
+        </div>
+        <p className="muted">
+          <Rich
+            text={byLevel(lvl, {
               beginner: 'Watch a server combine what many clients learned into one small update, and see what that saves and what it loses.',
               student:
                 'Sample clients, give them LoRA adapters, and aggregate them three ways. Every number here is computed live by the backend on small synthetic adapters.',
               researcher:
-                'One aggregation round per step: Dirichlet partition, client sampling, data-size weights, then FedIT, exact weighted stacking and FLoRIST (Algorithm 1) on synthetic 16 × 32 adapters, computed live in float64.',
+                'One aggregation round per step: Dirichlet partition, client sampling, data-size weights, then FedIT, exact weighted stacking and FLoRIST (Algorithm 1) on synthetic $16 \\times 32$ adapters, computed live in float64.',
             })}
-          </p>
-        </div>
-        <span className="pill">
-          <span className="pill-dot ok" /> Computed live · synthetic adapters
-        </span>
+          />
+        </p>
       </header>
 
       {lvl === 'beginner' && (
@@ -206,7 +208,7 @@ export default function SimulatorPage() {
               <div className="segmented" role="tablist" aria-label="Result views">
                 {TAB_ORDER.map((t) => (
                   <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-                    {TAB_LABELS[t][lvl]}
+                    <Rich text={TAB_LABELS[t][lvl]} />
                   </button>
                 ))}
               </div>
@@ -277,7 +279,7 @@ export default function SimulatorPage() {
                         {lvl === 'beginner' ? 'total detail kept so far' : 'cumulative energy'}
                       </li>
                       <li>
-                        <span className="swatch lm-swatch-dash" /> {lvl === 'beginner' ? 'target' : 'threshold τ'}
+                        <span className="swatch lm-swatch-dash" /> {lvl === 'beginner' ? 'target' : <>threshold <M tex="\tau" /></>}
                       </li>
                     </ul>
                     {lvl === 'student' && <p className="small muted">Hover a bar to see its value.</p>}
@@ -293,7 +295,7 @@ export default function SimulatorPage() {
                 )}
 
                 <p className="lm-reading">
-                  <strong>Reading this:</strong> {reading(tab, current!, lvl)}
+                  <strong>Reading this:</strong> <Rich text={reading(tab, current!, lvl)} />
                 </p>
 
                 {lvl === 'student' && (
@@ -321,13 +323,15 @@ export default function SimulatorPage() {
             <StatusMessage tone="warning" title="Notes for this round">
               <ul className="lm-list">
                 {r.notices.map((n) => (
-                  <li key={n}>{n}</li>
+                  <li key={n}>
+                    <Rich text={n} />
+                  </li>
                 ))}
               </ul>
             </StatusMessage>
           )}
           {current && (
-            <AssumptionsList
+            <MathAssumptions
               title={lvl === 'beginner' ? 'What this page simplifies' : 'Assumptions behind these numbers'}
               assumptions={lvl === 'beginner' ? BEGINNER_ASSUMPTIONS : [...current.assumptions, ...current.results.payload_assumptions]}
             />
@@ -371,8 +375,8 @@ function Refs({ tab }: { tab: Tab }) {
   return (
     <p className="lm-refs small">
       {refs.map((t) => (
-        <button key={t.id} type="button" className="lm-chip lm-chip-btn" onClick={() => openTerm(t.id)} title={t.label}>
-          {t.label}: {t.reference}
+        <button key={t.id} type="button" className="lm-chip lm-chip-btn" onClick={() => openTerm(t.id)} title={toPlain(t.label)}>
+          <Rich text={t.label} />: {t.reference}
         </button>
       ))}
     </p>
@@ -428,7 +432,7 @@ function Slider({
           <span>{ends[1]}</span>
         </span>
       )}
-      {hint && <span className="small muted">{hint}</span>}
+      {hint && <span className="small muted">{rich(hint)}</span>}
     </div>
   );
 }
@@ -444,7 +448,7 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
             id="lm-total"
             label={
               <Term htmlFor="lm-total" definition="Every device or organisation that holds its own data and could take part in training.">
-                {researcher ? 'Total clients K' : 'Total clients'}
+                {researcher ? 'Total clients $K$' : 'Total clients'}
               </Term>
             }
             value={s.total_clients}
@@ -494,13 +498,13 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
               definition={
                 beginner
                   ? 'How different the hospitals’ notes are. Very uneven: each hospital sees only a few topics. Very similar: everyone sees a bit of everything.'
-                  : "Dirichlet α controls how uneven the clients' data is: small α gives each client only a few classes; large α gives everyone a similar mix."
+                  : "Dirichlet $\\alpha$ controls how uneven the clients' data is: small $\\alpha$ gives each client only a few classes; large $\\alpha$ gives everyone a similar mix."
               }
             >
               {byLevel(level, {
                 beginner: 'How different is their data?',
-                student: 'Dirichlet α',
-                researcher: 'Dirichlet α (label skew)',
+                student: 'Dirichlet $\\alpha$',
+                researcher: 'Dirichlet $\\alpha$ (label skew)',
               })}
             </Term>
           }
@@ -513,11 +517,15 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
           ends={beginner ? ['very uneven', 'very similar'] : undefined}
           hint={
             <>
-              {beginner
-                ? 'The paper uses a fairly uneven setting.'
-                : researcher
-                  ? 'Log scale, 0.01–1000 · paper: α = 0.5 (Sec. 4.1)'
-                  : 'More uneven ← → more similar · paper uses 0.5'}{' '}
+              <Rich
+                text={
+                  beginner
+                    ? 'The paper uses a fairly uneven setting.'
+                    : researcher
+                      ? 'Log scale, 0.01–1000 · paper: $\\alpha = 0.5$ (Sec. 4.1)'
+                      : 'More uneven ← → more similar · paper uses 0.5'
+                }
+              />{' '}
               {s.alpha !== 0.5 && (
                 <button type="button" className="btn btn-ghost lm-inline-btn" onClick={() => update({ alpha: 0.5 })}>
                   reset
@@ -530,7 +538,7 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
 
       <Group title={beginner ? 'Add-on sizes' : 'LoRA ranks'}>
         <div className="lm-field">
-          <Term termId="heterogeneous_ranks">{beginner ? 'Do all hospitals use the same size?' : researcher ? 'r_k' : 'Client ranks'}</Term>
+          <Term termId="heterogeneous_ranks">{beginner ? 'Do all hospitals use the same size?' : researcher ? '$r_k$' : 'Client ranks'}</Term>
           <div className="segmented lm-full" role="group" aria-label="Client ranks">
             <button type="button" aria-pressed={!s.heterogeneous} onClick={() => update({ heterogeneous: false })}>
               {beginner ? 'Same size' : 'Homogeneous'}
@@ -540,13 +548,13 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
             </button>
           </div>
           <span className="small muted">
-            {byLevel(level, {
+            {rich(byLevel(level, {
               beginner: s.heterogeneous
                 ? 'Smaller hospitals use smaller add-ons, bigger ones use larger add-ons.'
                 : 'Every hospital uses the same add-on size.',
               student: s.heterogeneous ? 'Mix of ranks 1, 2 and 4 (most clients small, like the paper).' : 'Every client uses rank 4.',
-              researcher: s.heterogeneous ? 'r_k by client id: 50% r=1, 30% r=2, 20% r=4 (heavy-tailed, cf. Sec. 4.1).' : 'r_k = 4 for all k.',
-            })}
+              researcher: s.heterogeneous ? '$r_k$ by client id: 50% $r = 1$, 30% $r = 2$, 20% $r = 4$ (heavy-tailed, cf. Sec. 4.1).' : '$r_k = 4$ for all $k$.',
+            }))}
           </span>
         </div>
       </Group>
@@ -578,8 +586,8 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
             <Term termId="energy_threshold" htmlFor="lm-tau">
               {byLevel(level, {
                 beginner: 'How much detail to keep',
-                student: 'Energy threshold τ',
-                researcher: 'τ',
+                student: 'Energy threshold $\\tau$',
+                researcher: '$\\tau$',
               })}
             </Term>
           }
@@ -593,7 +601,7 @@ function Controls({ settings: s, update, level }: { settings: Settings; update: 
           hint={byLevel(level, {
             beginner: 'The paper keeps 90%.',
             student: 'FLoRIST only · paper default 0.90',
-            researcher: 'FLoRIST only · paper: τ = 0.90 and tuned τ* (Sec. 4.2)',
+            researcher: 'FLoRIST only · paper: $\\tau = 0.90$ and tuned $\\tau^*$ (Sec. 4.2)',
           })}
         />
       </Group>
@@ -644,9 +652,9 @@ function alphaWords(alpha: number): string {
 function Kpi({ label, value, sub }: { label: ReactNode; value: ReactNode; sub: ReactNode }) {
   return (
     <div className="lm-kpi">
-      <span className="small muted">{label}</span>
-      <strong className="lm-kpi-value">{value}</strong>
-      <span className="small muted">{sub}</span>
+      <span className="small muted">{rich(label)}</span>
+      <strong className="lm-kpi-value">{rich(value)}</strong>
+      <span className="small muted">{rich(sub)}</span>
     </div>
   );
 }
@@ -702,25 +710,25 @@ function Kpis({ result, level, fedVisible }: { result: SimulatorRoundResponse | 
     return (
       <div className="lm-kpis">
         <Kpi
-          label={<Term termId="selected_rank">p</Term>}
+          label={<Term termId="selected_rank">$p$</Term>}
           value={r.p}
-          sub={`max r_k = ${Math.max(...r.client_ranks)} · Σr_k = ${sigma} · τ = ${tau.toFixed(2)}`}
+          sub={String.raw`$\max_k r_k = ${Math.max(...r.client_ranks)}$ · $\sum_k r_k = ${sigma}$ · $\tau = ${tau.toFixed(2)}$`}
         />
         <Kpi
           label={<Term termId="communication_cost">download / client</Term>}
           value={formatBytes(fl.download_per_client_bytes)}
-          sub={`p(m+n)·b = ${r.p}·${r.m + r.n}·${b} · stack Σr_k(m+n)·b = ${formatBytes(st.download_per_client_bytes)}`}
+          sub={String.raw`$p(m+n)\,b = ${r.p} \cdot ${r.m + r.n} \cdot ${b}$ · stack $\sum_k r_k (m+n)\,b$ = ${formatBytes(st.download_per_client_bytes)}`}
         />
         <Kpi
-          label={<Term termId="eckart_young_bound">‖ΔW − B_gA_g‖_F</Term>}
+          label={<Term termId="eckart_young_bound">{String.raw`$\lVert \Delta W - B_g A_g \rVert_F$`}</Term>}
           value={r.reconstruction_error.absolute.toPrecision(3)}
-          sub={`rel ${pct(r.reconstruction_error.relative)} · = √Σ_{i>p} σ_i² = ${r.eq5_bound.toPrecision(3)} (Eq. 5)`}
+          sub={String.raw`rel ${pct(r.reconstruction_error.relative)} · $= \sqrt{\textstyle\sum_{i>p} \sigma_i^2} = ${r.eq5_bound.toPrecision(3)}$ (Eq. 5)`}
         />
         {fedVisible && (
           <Kpi
-            label={<Term termId="cross_term">‖ΔW − B̄Ā‖_F (FedIT)</Term>}
+            label={<Term termId="cross_term">{String.raw`$\lVert \Delta W - \bar{B}\bar{A} \rVert_F$ (FedIT)`}</Term>}
             value={fe ? fe.absolute.toPrecision(3) : 'undefined'}
-            sub={fe ? `rel ${pct(fe.relative)} · stacking: ${r.aggregation_error_exact_stack.absolute.toExponential(1)}` : 'r_k differ: Σw_kB_k is not defined'}
+            sub={fe ? String.raw`rel ${pct(fe.relative)} · stacking: $${texExp(r.aggregation_error_exact_stack.absolute)}$` : String.raw`$r_k$ differ: $\sum_k w_k B_k$ is not defined`}
           />
         )}
       </div>
@@ -730,14 +738,14 @@ function Kpis({ result, level, fedVisible }: { result: SimulatorRoundResponse | 
   return (
     <div className="lm-kpis">
       <Kpi
-        label={<Term termId="selected_rank">Global rank p</Term>}
+        label={<Term termId="selected_rank">Global rank $p$</Term>}
         value={r.p}
-        sub={`The smallest rank whose singular values hold ${Math.round(tau * 100)}% of the energy (max r_k = ${Math.max(...r.client_ranks)}, Σr_k = ${sigma}).`}
+        sub={String.raw`The smallest rank whose singular values hold ${Math.round(tau * 100)}% of the energy ($\max_k r_k = ${Math.max(...r.client_ranks)}$, $\sum_k r_k = ${sigma}$).`}
       />
       <Kpi
         label={<Term termId="communication_cost">Download per client</Term>}
         value={formatBytes(fl.download_per_client_bytes)}
-        sub={`FLoRIST sends p(m+n) numbers: ${ratio}× less than exact stacking’s ${formatBytes(st.download_per_client_bytes)}.`}
+        sub={`FLoRIST sends $p(m+n)$ numbers: ${ratio}× less than exact stacking’s ${formatBytes(st.download_per_client_bytes)}.`}
       />
       <Kpi
         label={<Term termId="eckart_young_bound">FLoRIST error</Term>}
@@ -834,22 +842,30 @@ function BeginnerScale({ rows }: { rows: { method: string; download_mb: number }
 
 /* ---------- Reading captions and math ---------- */
 
+/** Scientific notation as TeX, e.g. 1.8e-16 → 1.8 \times 10^{-16}. */
+function texExp(x: number, digits = 1): string {
+  if (x === 0) return '0';
+  const [mant, exp] = x.toExponential(digits).split('e');
+  return String.raw`${mant} \times 10^{${Number(exp)}}`;
+}
+
+/** "Reading this" caption; math is marked with $…$ and rendered by <Rich>. Percent signs stay outside math. */
 function reading(tab: Tab, d: SimulatorRoundResponse, level: Level): string {
   const r = d.results;
   const sigma = sum(r.client_ranks);
+  const tau = d.inputs.tau.toFixed(2);
   if (tab === 'spectrum') {
     const kept = r.p > 0 ? r.cumulative_energy[r.p - 1] : 0;
     return byLevel(level, {
       beginner: `Each bar is one piece of what the clients learned together; tall bars matter most. FLoRIST keeps the ${r.p} orange bar${
         r.p === 1 ? '' : 's'
       }, which hold ${formatPercent(kept)} of the total, and drops the rest.`,
-      student: `The ${r.singular_values.length} bars are the singular values of the weighted average update ΔW. The first ${r.p} hold ${formatPercent(
+      student: String.raw`The ${r.singular_values.length} bars are the singular values of the weighted average update $\Delta W$. The first ${r.p} hold ${formatPercent(
         kept,
-      )} of the energy, which meets τ = ${d.inputs.tau.toFixed(2)}, so FLoRIST sends rank ${r.p} instead of Σr_k = ${sigma}.`,
-      researcher: `rank(ΔW) ≤ min(m, n, Σr_k) = ${Math.min(r.m, r.n, sigma)}; ${r.singular_values.length} singular values shown. E(p) = ${formatPercent(
-        kept,
-        2,
-      )} ≥ τ = ${d.inputs.tau.toFixed(2)} at p = ${r.p}. σ(P) equals σ(ΔW) because B_stack and A_stack factor ΔW exactly.`,
+      )} of the energy, which meets $\tau = ${tau}$, so FLoRIST sends rank $p = ${r.p}$ instead of $\sum_k r_k = ${sigma}$.`,
+      researcher: String.raw`$\operatorname{rank}(\Delta W) \le \min(m, n, \sum_k r_k) = ${Math.min(r.m, r.n, sigma)}$; ${
+        r.singular_values.length
+      } singular values shown. $E(p)$ = ${formatPercent(kept, 2)} $\ge \tau = ${tau}$ at $p = ${r.p}$. $\sigma(P) = \sigma(\Delta W)$ because $B_{\text{stack}}$ and $A_{\text{stack}}$ factor $\Delta W$ exactly.`,
     });
   }
   if (tab === 'download') {
@@ -860,12 +876,12 @@ function reading(tab: Tab, d: SimulatorRoundResponse, level: Level): string {
       beginner: `Each client downloads ${formatBytes(fl.download_per_client_bytes)} with FLoRIST, versus ${formatBytes(
         st.download_per_client_bytes,
       )} if the server sent everything.`,
-      student: `Each client downloads ${formatBytes(fl.download_per_client_bytes)} with FLoRIST (rank ${fl.download_rank}) and ${formatBytes(
+      student: `Each client downloads ${formatBytes(fl.download_per_client_bytes)} with FLoRIST (rank $${fl.download_rank}$) and ${formatBytes(
         st.download_per_client_bytes,
-      )} with exact stacking (rank ${st.download_rank}).${fe ? ` FedIT sends ${formatBytes(fe.download_per_client_bytes)}, but its average is not exact.` : ''}`,
-      researcher: `Per client per round: stack ${st.download_rank}(m+n), FLoRIST ${fl.download_rank}(m+n)${
-        fe ? `, FedIT ${fe.download_rank}(m+n)` : ''
-      } parameters at ${d.inputs.bytes_per_param} B each. Upload is r_k(m+n) for every method. Total upload this round: ${formatBytes(fl.upload_total_bytes)}.`,
+      )} with exact stacking (rank $${st.download_rank}$).${fe ? ` FedIT sends ${formatBytes(fe.download_per_client_bytes)}, but its average is not exact.` : ''}`,
+      researcher: String.raw`Per client per round: stack $${st.download_rank}(m+n)$, FLoRIST $${fl.download_rank}(m+n)$${
+        fe ? String.raw`, FedIT $${fe.download_rank}(m+n)$` : ''
+      } parameters at ${d.inputs.bytes_per_param} B each. Upload is $r_k(m+n)$ for every method. Total upload this round: ${formatBytes(fl.upload_total_bytes)}.`,
     });
   }
   const held = r.sampled_clients.map((c) => classesHeld(r.class_counts[c]));
@@ -875,45 +891,81 @@ function reading(tab: Tab, d: SimulatorRoundResponse, level: Level): string {
       avg,
       1,
     )} of the 16 topics on average. Hospitals with more notes count for more when the server combines.`,
-    student: `Rows are clients and columns are the 16 classes; darker cells hold more examples. With α = ${formatNumber(d.inputs.alpha, 2)}, this round's ${
+    student: String.raw`Rows are clients and columns are the 16 classes; darker cells hold more examples. With $\alpha = ${formatNumber(d.inputs.alpha, 2)}$, this round's ${
       r.sampled_clients.length
     } sampled clients (●) hold ${formatNumber(avg, 1)} classes on average, and they are weighted by how many examples they have.`,
-    researcher: `Per-class Dirichlet(α = ${formatNumber(d.inputs.alpha, 3)}) split of 16 × 60 samples over K = ${r.class_counts.length} clients. w_k = n_k / Σ n_j over the ${
-      r.sampled_clients.length
-    } sampled clients${r.sample_counts.some((n) => n === 0) ? '; clients with n_k = 0 get w_k = 0' : ''}.`,
+    researcher: String.raw`Per-class $\operatorname{Dir}(\alpha = ${formatNumber(d.inputs.alpha, 3)})$ split of $16 \times 60$ samples over $K = ${
+      r.class_counts.length
+    }$ clients; $w_k = n_k / \sum_j n_j$ over the ${r.sampled_clients.length} sampled clients${
+      r.sample_counts.some((n) => n === 0) ? String.raw`; clients with $n_k = 0$ get $w_k = 0$` : ''
+    }.`,
   });
 }
 
+/** Key equations for the current tab, as centered display math with the live numbers. */
 function MathBox({ tab, data }: { tab: Tab; data: SimulatorRoundResponse }) {
   const r = data.results;
   const { m, n } = r;
   const sigma = sum(r.client_ranks);
-  const w = r.weights.map((x) => x.toFixed(3)).join(', ');
-  const lines: string[] =
+  const b = data.inputs.bytes_per_param;
+  const w = r.weights.map((x) => x.toFixed(3)).join(',\\ ');
+  const rows: { caption: string; tex: string }[] =
     tab === 'spectrum'
       ? [
-          `ΔW = Σ_k w_k B_k A_k = B_stack · A_stack     (m × n = ${m} × ${n}; w = [${w}])`,
-          'B_stack = U_B S_B V_Bᵀ,  A_stack = U_A S_A V_Aᵀ,  P = S_B (V_Bᵀ U_A) S_A = U_P S_P V_Pᵀ',
-          `p = smallest j with Σ_{i≤j} σ_i² / Σ_i σ_i² ≥ τ = ${data.inputs.tau.toFixed(2)}   →   p = ${r.p}`,
-          `‖ΔW − B_g A_g‖_F = √(Σ_{i>p} σ_i²) = ${formatNumber(r.eq5_bound, 4)}   (Eckart–Young, Eq. 5)`,
+          {
+            caption: String.raw`The target update, written exactly as one product of the two stacks $(m \times n = ${m} \times ${n})$:`,
+            tex: String.raw`\begin{gathered} \Delta W = \sum_{k} w_k B_k A_k = B_{\text{stack}} A_{\text{stack}} \\ w = (${w}) \end{gathered}`,
+          },
+          {
+            caption: 'FLoRIST takes thin SVDs of the stacks and works with the small core matrix $P$:',
+            tex: String.raw`\begin{gathered} B_{\text{stack}} = U_B S_B V_B^\top \\ A_{\text{stack}} = U_A S_A V_A^\top \\ P = S_B \,(V_B^\top U_A)\, S_A \\ P = U_P S_P V_P^\top \end{gathered}`,
+          },
+          {
+            caption: String.raw`The global rank is the smallest $j$ that keeps a fraction $\tau$ of the energy (Eq. 6):`,
+            tex: String.raw`{p = \min\Bigl\{\, j : \frac{\sum_{i \le j} \sigma_i^2}{\sum_{i} \sigma_i^2} \ge \tau = ${data.inputs.tau.toFixed(2)} \Bigr\}} = ${r.p}`,
+          },
+          {
+            caption: 'The error equals the energy that was discarded (Eckart–Young, Eq. 5):',
+            tex: String.raw`\lVert \Delta W - B_g A_g \rVert_F = \sqrt{\textstyle\sum_{i > p} \sigma_i^2} = ${formatNumber(r.eq5_bound, 4)}`,
+          },
           r.aggregation_error_fedit
-            ? `FedIT: ‖ΔW − (Σ w_k B_k)(Σ w_k A_k)‖_F = ${formatNumber(r.aggregation_error_fedit.absolute, 4)}`
-            : 'FedIT: not defined when client ranks differ',
+            ? {
+                caption: 'FedIT multiplies the averaged factors, which adds cross terms:',
+                tex: String.raw`\begin{aligned} &\Bigl\lVert \Delta W - \Bigl(\sum_k w_k B_k\Bigr)\Bigl(\sum_k w_k A_k\Bigr) \Bigr\rVert_F \\ &\qquad = ${formatNumber(r.aggregation_error_fedit.absolute, 4)} \end{aligned}`,
+              }
+            : { caption: String.raw`FedIT is not defined here: the $B_k$ have different numbers of columns, so $\sum_k w_k B_k$ does not exist.`, tex: '' },
         ]
       : tab === 'download'
         ? [
-            `Download per client = rank × (m + n) × bytes = rank × ${m + n} × ${data.inputs.bytes_per_param} B`,
-            `Exact stacking: rank Σr_k = ${sigma};  FLoRIST: rank p = ${r.p};  FedIT: rank r (equal ranks only)`,
-            `Upload per client k = r_k × (m + n) × bytes`,
+            {
+              caption: 'Download per client, for a method that sends rank-$q$ adapters:',
+              tex: String.raw`\text{bytes} = q\,(m + n)\,b = q \cdot ${m + n} \cdot ${b}`,
+            },
+            {
+              caption: 'The rank $q$ each method sends:',
+              tex: String.raw`\begin{gathered} q_{\text{stack}} = \sum_k r_k = ${sigma} \\ q_{\text{FLoRIST}} = p = ${r.p} \\ q_{\text{FedIT}} = r \ \ (\text{equal ranks only}) \end{gathered}`,
+            },
+            { caption: 'Upload per client $k$:', tex: String.raw`\text{bytes}_k = r_k\,(m + n)\,b` },
           ]
         : [
-            'For each class c: (q_1, …, q_K) ~ Dirichlet(α); client k gets about q_k × 60 examples of class c',
-            `w_k = n_k / Σ_j n_j   →   sample counts [${r.sample_counts.join(', ')}], weights [${w}]`,
+            {
+              caption: String.raw`For each class $c$, the class's 60 examples are split across the $K$ clients by a Dirichlet draw:`,
+              tex: String.raw`\begin{gathered} (q_{1c}, \ldots, q_{Kc}) \sim \operatorname{Dir}(\alpha, \ldots, \alpha) \\ n_{kc} \approx 60\, q_{kc} \end{gathered}`,
+            },
+            {
+              caption: `Sampled clients are weighted by their data (sample counts ${r.sample_counts.join(', ')}):`,
+              tex: String.raw`\begin{gathered} w_k = \frac{n_k}{\sum_j n_j} \\ w = (${w}) \end{gathered}`,
+            },
           ];
   return (
-    <div className="lm-equation lm-math" aria-label="The math">
-      {lines.map((l) => (
-        <div key={l}>{l}</div>
+    <div className="lm-math-panel" aria-label="The math">
+      {rows.map((row) => (
+        <div key={row.caption + row.tex} className="lm-math-row">
+          <p>
+            <Rich text={row.caption} />
+          </p>
+          {row.tex && <MathBlock tex={row.tex} />}
+        </div>
       ))}
     </div>
   );
@@ -1009,8 +1061,12 @@ function Experiments({
     <>
       <div className="card lm-predict">
         <div className="lm-kicker">Predict, then run</div>
-        <strong>{words.title}</strong>
-        <p>{words.question}</p>
+        <strong>
+          <Rich text={words.title} />
+        </strong>
+        <div className="lm-question">
+          <Rich text={words.question} />
+        </div>
         <div className="lm-options" role="radiogroup" aria-label="Your prediction">
           {exp.optionIds.map((id) => (
             <button
@@ -1022,7 +1078,7 @@ function Experiments({
               disabled={!current || !!mine}
               onClick={() => onPredict(exp, id)}
             >
-              {words.options[id]}
+              <Rich text={words.options[id]} />
             </button>
           ))}
         </div>
@@ -1032,7 +1088,7 @@ function Experiments({
             tone={verdict.correct === mine!.choice ? 'success' : 'warning'}
             title={verdict.correct === mine!.choice ? 'You called it' : 'Not this time'}
           >
-            {verdict.explanation}
+            <Rich text={verdict.explanation} />
           </StatusMessage>
         )}
         {mine && (
@@ -1047,7 +1103,7 @@ function Experiments({
           {EXPERIMENTS.map((e) => (
             <li key={e.id}>
               <button type="button" aria-current={e.id === exp.id ? 'true' : undefined} onClick={() => setActiveExp(e.id)}>
-                {byLevel(level, e.wording).title}
+                <Rich text={byLevel(level, e.wording).title} />
               </button>
             </li>
           ))}
