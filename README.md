@@ -1,8 +1,12 @@
 # Federated Learning Explorer
 
-An educational web app that explains federated learning through three independent modules: **language models** (LoRA / FLoRIST-inspired fine-tuning), **underwater acoustics** (spectrograms, EfficientNet-B0 concepts, FedAvg) and **hardware-aware learning** (device time/energy tradeoffs). It has a React + TypeScript frontend and a FastAPI backend that runs small, bounded calculations.
+An educational web app that explains federated learning through three independent modules: **language models** (LoRA / FLoRIST-inspired fine-tuning), **underwater acoustics** (live Mel spectrograms of real ship recordings, FedAvg, and a planned PANN MobileNetV2 vessel classifier) and **hardware-aware learning** (device time/energy tradeoffs). It has a React + TypeScript frontend and a FastAPI backend that runs small, bounded calculations.
 
-**Current MVP limitations:** every number is *illustrative*. There is no real model training, no dataset download, no GPU use, no database and no authentication. Device profiles are uncalibrated. Settings and results live only in browser memory (the server stores nothing): they survive moving between pages but reset when you refresh.
+**Current status (mid-project):**
+
+- **Real computation:** the acoustics spectrogram explorer reads real QiandaoEar22 recordings, resamples them, and computes the Mel spectrogram on the server for the exact settings you choose (labeled "measured" in the UI). The FedAvg weighting and LoRA/hardware calculators are exact formulas, not trained models.
+- **Illustrative or not built yet:** no neural network has been trained or run yet (the PANN MobileNetV2 vessel classifier is planned), and the language-model fine-tuning and device profiles are estimates. Anything labeled "illustrative" in the UI is not a measurement.
+- **Other limits:** no database and no authentication. Settings and results live only in browser memory (the server stores nothing): they survive moving between pages but reset when you refresh.
 
 ## Setup
 
@@ -28,6 +32,14 @@ cp .env.example .env                 # optional; defaults to http://localhost:80
 npm run dev
 ```
 
+### Try it (about 1 minute)
+
+1. Start the backend and frontend as above and open http://localhost:5173.
+2. Open the **Underwater Acoustics** module and find **What the model hears**.
+3. Change the **Preset** (for example PANN default, then Engine tones). The backend recomputes the spectrogram, and the model input size and server time update.
+4. The dataset is not stored in this repository (it is about 21 GB). Without it, the **Audio** menu offers a clearly labeled synthetic signal instead of real recordings. To use real audio, download QiandaoEar22 from [IEEE DataPort](https://ieee-dataport.org/documents/qiandaoear22), place the WAV files under `training/acoustics/data/qiandaoear22`, or point `ACOUSTICS_DATA_DIR` in `backend/.env` at them.
+5. Run the backend tests with `pytest` in `backend/` (after `pip install -r requirements-dev.txt`).
+
 ### Local URLs
 
 | What | URL |
@@ -46,7 +58,7 @@ frontend/src/
   services/api.ts   API client and error handling
   modules/
     language-models/  page, matrix visual, types, API calls
-    acoustics/        page, spectrogram + stacked bars, static sample JSON
+    acoustics/        page, spectrogram explorer, FedAvg calculator
     hardware/         page, resource bars, types, API calls
   styles/           tokens.css (colors from colors.md, spacing, type), global.css
 backend/app/
@@ -63,7 +75,7 @@ backend/tests/      pytest checks for calculations and invalid inputs
 | Module | Frontend folder | Backend package | Endpoint(s) | Owner |
 | --- | --- | --- | --- | --- |
 | Language models | `frontend/src/modules/language-models` | `backend/app/modules/language_models` | `POST /api/v1/language-models/calculate` | Nhi |
-| Underwater acoustics | `frontend/src/modules/acoustics` | `backend/app/modules/acoustics` | `POST /api/v1/acoustics/aggregate` | Bryn |
+| Underwater acoustics | `frontend/src/modules/acoustics` | `backend/app/modules/acoustics` | `POST /api/v1/acoustics/aggregate`, `GET /api/v1/acoustics/clips`, `POST /api/v1/acoustics/spectrogram` | Bryn |
 | Hardware-aware learning | `frontend/src/modules/hardware` | `backend/app/modules/hardware` | `GET /api/v1/hardware/device-profiles`, `POST /api/v1/hardware/estimate` | Sai |
 
 Shared files (`app/`, `components/`, `services/`, `styles/`, `backend/app/main.py`, `schemas/common.py`) change only after agreeing as a team.
@@ -76,7 +88,11 @@ Shared files (`app/`, `components/`, `services/`, `styles/`, `backend/app/main.p
 4. **Frontend**: mirror the types in `modules/<name>/types.ts` (same field names), add the call in `modules/<name>/api.ts`, and use `useApiAction` for loading/error states and ignoring stale responses. Don't re-implement backend formulas in the UI.
 5. **Verify**: add a hand-calculated test in `backend/tests/`, then run `pytest` (in `backend/`, after `pip install -r requirements-dev.txt`) and `npm run build` (in `frontend/`).
 
-Labelled "Extension point" cards on each page mark where real models (FLoRIST/SVT, PORTIA + EfficientNet-B0, device calibration) will plug in.
+Labelled "Extension point" cards on each page mark where real models (FLoRIST/SVT, PANN MobileNetV2 trained on QiandaoEar22, device calibration) will plug in.
+
+## Offline model training (acoustics)
+
+Training runs outside the web app, never inside an API request. Its setup, plan and progress are in [`training/acoustics/README.md`](training/acoustics/README.md) and [`training/acoustics/TRAINING.md`](training/acoustics/TRAINING.md). It needs Python 3.12 and an NVIDIA GPU, and is not required to run the web app.
 
 ## Environment settings
 
