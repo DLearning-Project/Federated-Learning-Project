@@ -127,7 +127,7 @@ Code: `qiandao.py` (what names and folders mean), `extract.py`, `audit.py`,
   shuffles (seed `20261103`). `split.py` refuses any split where a group,
   recording or file hash appears in two splits.
 
-**Result** (`splits/split_summary.json`, manifest SHA-256 `a972e50e…3b77`):
+**Result** (`splits/split_summary.json`, manifest SHA-256 `bdf42aa7…7811`):
 
 | Split | Vessel | No vessel | Sessions | Far-and-weak vessel |
 | --- | --- | --- | --- | --- |
@@ -147,9 +147,9 @@ Code: `qiandao.py` (what names and folders mean), `extract.py`, `audit.py`,
 - Vessel examples outnumber no-vessel windows about 2 : 1; Phase 3 must
   account for it (class weights or balanced sampling) and report per-class
   metrics.
-- The audit summary records `dirty: true` because the outputs and an
-  unrelated report draft were uncommitted when it ran; the code was commit
-  `5c32381`.
+- The audit summary records `dirty: true` only because an unrelated,
+  untracked report draft (`docs/`) was present; the code was commit
+  `f09bab8` with no modified tracked files.
 
 ## The training pipeline, step by step
 

@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-11-04T04:31:13+00:00",
+  "generated_at": "2026-11-04T04:42:48+00:00",
   "data_root": "data/qiandaoear22_full",
   "archive_record": {
     "path": "results/audit/archives.csv",
-    "sha256": "77d040e43419b602ff99fc8d090bf1fb9af61d29b05c8da173a9981650d36f42"
+    "sha256": "300d052c94714a28339259509ec52ef12ed1b5eae56c54b2b7ad033fa6503518"
   },
   "git": {
     "remote": "https://github.com/DLearning-Project/Federated-Learning-Project.git",
     "branch": "feature/acoustics-phase2",
-    "commit": "5c3238177f9849cefeff3283e11c134fd0854a70",
+    "commit": "f09bab8ec109c33fd27b0e006a98cdba2fead9cf",
     "dirty": true
   },
   "packages": {
@@ -177,5 +177,5 @@
     "sample_rate_hz": 52734,
     "bits": 16
   },
-  "inventory_sha256": "51f187816b4710ce89cf49c16954efabaaf9c98231be68ed9d1e2c90ec2caa9f"
+  "inventory_sha256": "33eea7677894fbda753e404ee6be26349b5454ec220d19123a58cb85a00522e0"
 }
