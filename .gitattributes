@@ -1,0 +1,3 @@
+# Acoustics records are hashed: keep their bytes (LF) exactly as written.
+training/acoustics/results/** -text
+training/acoustics/splits/** -text

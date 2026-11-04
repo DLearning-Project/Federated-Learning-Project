@@ -182,19 +182,21 @@ def run_split(inventory_path: Path, out_dir: Path, fractions: tuple[float, ...],
     manifest = out_dir / "split_manifest.csv"
     examples.sort(key=lambda e: (e["clip_id"], e["offset_s"]))
     with manifest.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=MANIFEST_FIELDS)
+        writer = csv.DictWriter(fh, fieldnames=MANIFEST_FIELDS, lineterminator="\n")  # LF: hashes match on every OS
         writer.writeheader()
         for e in examples:
             writer.writerow({f: e[f] for f in MANIFEST_FIELDS})
     with manifest.open("rb") as fh:
         digest = hashlib.file_digest(fh, "sha256").hexdigest()
-    (out_dir / "split_manifest.csv.sha256").write_text(f"{digest}  split_manifest.csv\n", encoding="utf-8")
+    (out_dir / "split_manifest.csv.sha256").write_text(f"{digest}  split_manifest.csv\n", encoding="utf-8", newline="\n")
 
     summary = summarize(examples, excluded, fractions, seed)
     with inventory_path.open("rb") as fh:
         summary["inventory_sha256"] = hashlib.file_digest(fh, "sha256").hexdigest()
     summary["manifest_sha256"] = digest
-    (out_dir / "split_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (out_dir / "split_summary.json").write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+    )
     return summary
 
 

@@ -117,7 +117,7 @@ def main() -> int:
         )
     args.record.parent.mkdir(parents=True, exist_ok=True)
     with args.record.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(fh, fieldnames=list(rows[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     print(f"Archive record: {args.record}")

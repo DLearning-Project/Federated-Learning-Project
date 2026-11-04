@@ -238,13 +238,15 @@ def run_audit(root: Path, out_dir: Path, archive_record: Path) -> dict:
 
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "inventory.csv").open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="raise")
+        writer = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="raise", lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow({f: row.get(f, "") for f in FIELDS})
     summary = summarize(rows, root, archive_record)
     summary["inventory_sha256"] = sha256_file(out_dir / "inventory.csv")
-    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (out_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+    )
     return summary
 
 
