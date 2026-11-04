@@ -1,0 +1,181 @@
+{
+  "generated_at": "2026-11-04T04:31:13+00:00",
+  "data_root": "data/qiandaoear22_full",
+  "archive_record": {
+    "path": "results/audit/archives.csv",
+    "sha256": "77d040e43419b602ff99fc8d090bf1fb9af61d29b05c8da173a9981650d36f42"
+  },
+  "git": {
+    "remote": "https://github.com/DLearning-Project/Federated-Learning-Project.git",
+    "branch": "feature/acoustics-phase2",
+    "commit": "5c3238177f9849cefeff3283e11c134fd0854a70",
+    "dirty": true
+  },
+  "packages": {
+    "numpy": "2.5.4",
+    "soundfile": "0.14.0"
+  },
+  "files": {
+    "total": 26338,
+    "canonical": 10637,
+    "duplicates": 15701,
+    "by_folder": {
+      "KaiYuan/other": {
+        "files": 4000,
+        "canonical": 3988
+      },
+      "KaiYuan/target": {
+        "files": 1947,
+        "canonical": 1947
+      },
+      "SpeedBoat/other": {
+        "files": 6262,
+        "canonical": 2126
+      },
+      "SpeedBoat/target": {
+        "files": 6927,
+        "canonical": 2526
+      },
+      "UUV/other": {
+        "files": 2000,
+        "canonical": 0
+      },
+      "UUV/target": {
+        "files": 902,
+        "canonical": 0
+      },
+      "noise_target/noise": {
+        "files": 50,
+        "canonical": 50
+      },
+      "noise_target/target": {
+        "files": 4250,
+        "canonical": 0
+      }
+    },
+    "unreadable": [],
+    "unknown_names": [],
+    "canonical_formats": {
+      "ship: 52734 Hz, 1 ch, PCM_32, 3.0 s": 10587,
+      "noise: 52734 Hz, 1 ch, PCM_24, 300.9435 s": 50
+    }
+  },
+  "copies": {
+    "files_with_copy_suffix": 2578,
+    "identical_to_original": 2578,
+    "names_with_differing_content": 3,
+    "examples_of_differing_content": [
+      "DATA0145.WAV",
+      "DATA0146.WAV",
+      "DATA0147.WAV"
+    ]
+  },
+  "ship": {
+    "canonical_clips": 10587,
+    "hours": 8.82,
+    "recordings": 130,
+    "sessions": 28,
+    "clips_per_session": {
+      "20220624101843": 84,
+      "20220624105851": 38,
+      "20220624110853": 128,
+      "20220624114901": 98,
+      "20220624123409": 100,
+      "20220624134923": 51,
+      "20220624140927": 18,
+      "20220624145937": 49,
+      "20220624153943": 33,
+      "20220624154945": 244,
+      "20220624161951": 543,
+      "20220625084757": 127,
+      "20220625094307": 189,
+      "20220625102315": 166,
+      "20220625104819": 60,
+      "20220625110823": 154,
+      "20220625121837": 100,
+      "20220625124843": 149,
+      "20220625130345": 53,
+      "20220625131847": 127,
+      "20220625140357": 43,
+      "20220625142901": 70,
+      "20220625145907": 100,
+      "20220626093721": 1140,
+      "20220626104735": 859,
+      "20220626153329": 2054,
+      "20220628093209": 2110,
+      "20220628144809": 1700
+    },
+    "days": {
+      "20220624": 1386,
+      "20220625": 1338,
+      "20220626": 4053,
+      "20220628": 3810
+    },
+    "single_vs_multiple": {
+      "S": 1606,
+      "M": 8981
+    },
+    "all_far_weak": 1171,
+    "non_vessel_only": 100,
+    "non_vessel_only_sources": {
+      "Car:F:W": 100
+    },
+    "sources_without_distance": {
+      "ArtificialSignals": 972,
+      "Unknown": 46,
+      "No7": 28,
+      "QianDao_M_MS": 10,
+      "No7_Slow_Down": 8
+    },
+    "clips_per_source_name": {
+      "SpeedBoat": 11337,
+      "QianDao": 8858,
+      "KaiYuan": 2270,
+      "No7": 1412,
+      "ArtificialSignals": 972,
+      "UUV": 902,
+      "GreenCity": 751,
+      "Cargo": 660,
+      "TheEarl": 559,
+      "Unknown": 501,
+      "FishBoat": 460,
+      "TheKnight": 360,
+      "WorkShip": 251,
+      "KaiYan": 191,
+      "BigPassengerShip": 135,
+      "MotorBoat": 100,
+      "Car": 100,
+      "PoliceBoat": 100,
+      "QianDao296": 52,
+      "CivilianBoats": 51,
+      "": 51,
+      "No5": 29,
+      "QianDao351": 25,
+      "Helicopter": 19,
+      "QianDao_M_MS": 10,
+      "No7_Slow_Down": 8
+    }
+  },
+  "noise": {
+    "canonical_files": 50,
+    "hours": 4.18,
+    "sessions": {
+      "DATA0001/DATA0032": 3,
+      "DATA0001/DATA0039": 7,
+      "DATA0001/DATA0047": 2,
+      "DATA0001/DATA0125": 2,
+      "DATA0001/DATA0132": 16,
+      "DATA0002/DATA0145": 20
+    },
+    "duplicate_files": []
+  },
+  "documented": {
+    "ship_records": 10611,
+    "ship_recordings": 143,
+    "noise_records_3s": 25900,
+    "noise_hours": 21.966666666666665,
+    "sample_rate_hz": 52734,
+    "bits": 16
+  },
+  "inventory_sha256": "51f187816b4710ce89cf49c16954efabaaf9c98231be68ed9d1e2c90ec2caa9f"
+}

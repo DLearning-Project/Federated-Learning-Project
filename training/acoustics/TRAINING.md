@@ -27,7 +27,7 @@ calculation or a spectrogram computed from audio (see "Done so far").
 | 0 | Inspect repository, GPU and model/dataset sources | Done (2026-10-28) |
 | 1 | Reproducible Python environment with GPU PyTorch | Done (2026-10-28, commit `b035139`) |
 | — | Web app: spectrogram explorer (backend + frontend) | Done (backend `cda9c87`, frontend `cc50fc3`) |
-| 2 | Dataset audit and leakage-safe splits | **Next.** Full dataset download in progress |
+| 2 | Dataset audit and leakage-safe splits | Done (2026-11-03); split composition to review, see Phase 2 below |
 | 3 | Centralized baseline | Not started |
 | 4 | FedAvg, IID and non-IID | Not started |
 | 5 | Show measured results on the web app | Not started |
@@ -76,6 +76,80 @@ Not training, but it uses the same preprocessing ideas, so it is listed here.
 
 The backend's resampler is a simple FFT method meant for display. Training
 must use `soxr` (Phase 2/3) and record that choice.
+
+### Phase 2: audit and splits (2026-11-03)
+
+Code: `qiandao.py` (what names and folders mean), `extract.py`, `audit.py`,
+`split.py`, tests in `tests/test_phase2.py` (17 pass). Reproduce from
+`training/acoustics/`:
+
+```bash
+.venv/Scripts/python.exe extract.py   # hash zips, extract to data/qiandaoear22_full/
+.venv/Scripts/python.exe audit.py     # results/audit/inventory.csv, summary.json
+.venv/Scripts/python.exe split.py     # splits/split_manifest.csv (+ .sha256), split_summary.json
+```
+
+**Audit findings** (`results/audit/summary.json`):
+
+- 26,338 files in 17 archives, all readable. Only **10,637 are distinct**
+  (by SHA-256): 10,587 ship clips (8.8 h, all 52,734 Hz mono 32-bit 3.0 s)
+  and 50 background files (4.2 h, 24-bit, 300.94 s each). The documentation
+  says 10,611 ship records from 143 recordings; we find 130 recordings.
+- Each folder is one "target vs. other" task built from the same pool, so
+  the same clip is stored up to four times. UUV/* and noise_target/target add
+  no new audio; SpeedBoat and KaiYuan hold every distinct ship clip.
+- All 2,578 "… - 副本" files are byte-identical to a clip with the original
+  name in another folder. They add nothing.
+- DATA0145–0147 exist on both cards (DATA0001, DATA0002) with different
+  content: card + number identifies a background file, not the number alone.
+- Recordings are 5 minutes long and start 300–302 s apart, forming **28
+  continuous sessions** (the largest holds 2,110 clips). The `label__k`
+  field is just the single/multiple flag, not a class.
+- Name quirks kept as they are, but counted: sources without distance or
+  audibility (`ArtificialSignals` 972, `Unknown` 46, `No7` 28,
+  `QianDao_M_MS` 10, `No7_Slow_Down` 8), 51 empty source names, and
+  `KaiYan` (191 clips, probably a typo of `KaiYuan`).
+
+**Decisions (2026-11-03):**
+
+- Labels: vessel = any ship clip; no vessel = 3-second windows (offsets
+  0, 3, … 297 s) of the background files.
+- Clips where every vessel is far and weak (1,171) are **kept** as vessel,
+  because a deployed buoy mostly hears distant vessels. They are flagged
+  `all_far_weak`, and Phase 3 must report their recall separately.
+- The 100 clips whose only source is `Car` (far, weak) are **excluded**:
+  not a watercraft and not clean background. Clips that mix a vessel with
+  `ArtificialSignals` or `Helicopter` stay.
+- Grouping is by **session**, not single recording: neighbouring recordings
+  hear the same vessel pass, so a recording-level split would still leak.
+  Noise sessions are runs of consecutive file numbers on one card (6 runs).
+- Each class is split separately, choosing the best of 20,000 seeded
+  shuffles (seed `20261103`). `split.py` refuses any split where a group,
+  recording or file hash appears in two splits.
+
+**Result** (`splits/split_summary.json`, manifest SHA-256 `a972e50e…3b77`):
+
+| Split | Vessel | No vessel | Sessions | Far-and-weak vessel |
+| --- | --- | --- | --- | --- |
+| train | 7,337 (70%) | 3,600 (72%) | 10 ship + 2 noise | 628 |
+| val | 1,575 (15%) | 700 (14%) | 10 ship + 1 noise | 246 |
+| test | 1,575 (15%) | 700 (14%) | 7 ship + 3 noise | 197 |
+
+**Limitations to keep in mind:**
+
+- Whole sessions make the splits differ in content. Validation has no
+  QianDao or KaiYuan clips; validation and test have no 2022-06-28
+  recordings; validation noise comes from one session. Scores therefore
+  measure generalization to unseen sessions, and val/test may disagree.
+- Background files have no date or link to the ship recordings, so the model
+  could partly learn "which card or day" instead of "vessel or not". Look for
+  this in Phase 3 errors.
+- Vessel examples outnumber no-vessel windows about 2 : 1; Phase 3 must
+  account for it (class weights or balanced sampling) and report per-class
+  metrics.
+- The audit summary records `dirty: true` because the outputs and an
+  unrelated report draft were uncommitted when it ran; the code was commit
+  `5c32381`.
 
 ## The training pipeline, step by step
 
@@ -174,41 +248,48 @@ evaluate on real lake recordings before claiming any performance.
 
 ## Data source
 
-**What we have now.** 27 WAV files (330 MB) downloaded from a OneDrive link
-into `training/acoustics/data/qiandaoear22/` (gitignored). Inspected
-2026-10-30:
+**Source.** The personal OneDrive of Xiaoyang Du (UCAS account
+`duxiaoyang22`), a citation author of the dataset (Shanghai Acoustics
+Laboratory, CAS): folder `QiandaoEar22`, last modified 2024-03-20. Recorded as
+an **author-hosted** source, not an official repository. Downloaded
+2026-10-30 to 2026-11-03 as 17 zips into `data/archives/` (gitignored); names,
+sizes and SHA-256 hashes are in `results/audit/archives.csv`. OneDrive could
+not zip `SpeedBoat/other` in one piece, so it came in 9 parts
+(`Speedboat_Other_1…9.zip`, overlapping by 177 identical files).
+
+| OneDrive folder | Files | Distinct content not in an earlier folder |
+| --- | --- | --- |
+| `KaiYuan数据集/other`, `/target` | 4,000 + 1,947 | 3,988 + 1,947 |
+| `SpeedBoat数据集/other`, `/target` | 6,262 + 6,927 | 2,126 + 2,526 |
+| `UUV数据集/other`, `/target` | 2,000 + 902 | 0 + 0 |
+| `noise_target数据集/noise/DATA0001`, `/DATA0002` | 30 + 20 | 50 |
+| `noise_target数据集/target` | 4,250 | 0 |
+
+**Development sample.** 27 WAV files (330 MB) from the same OneDrive in
+`data/qiandaoear22/`, used by the spectrogram explorer and quick tests. All 27
+are also in the full download. Inspected 2026-10-30:
 
 | Folder | Files | Format | Notes |
 | --- | --- | --- | --- |
 | `speedboat_target` | 10 | 52,734 Hz, mono, 32-bit, 3.0 s | One clip each from 10 timestamps |
-| `speedboat_other` | 10 | 52,734 Hz, mono, 32-bit, 3.0 s | 6 are named "… - 副本" ("copy"). None matches another file among these 10, but their originals may be in the full folder: unconfirmed until the audit |
+| `speedboat_other` | 10 | 52,734 Hz, mono, 32-bit, 3.0 s | 6 are named "… - 副本" ("copy"). Their originals are not in this sample, but the audit found them in other folders of the full download |
 | `noise/data0001`, `noise/data0002` | 7 | 52,734 Hz, mono, 24-bit, 300.9 s | Full 5-minute recordings, not 3-second records |
 
 **How this differs from the official documentation** (`QiandaoEar22_documentations.pdf`):
 
 - The documentation says 16-bit samples; these files are 32-bit (ship clips)
   and 24-bit (noise).
-- The documentation describes background noise as 25,900 three-second records;
-  these noise files are 5-minute recordings.
-- The documentation's file-name example includes a `DATA0008` field that these
+- The documentation describes background noise as 25,900 three-second records
+  (21 h 58 min); the OneDrive holds 50 five-minute files (4.2 h).
+- The documentation's file-name example includes a `DATA0008` field that the
   ship clip names do not have.
-- The full dataset is about 209 archives of roughly 100 MB each, about
-  **21 GB**, with 10,611 ship records and 25,900 noise records. 27 files are
-  far too few to train or evaluate a CNN.
+- The documentation describes about 209 archives of roughly 100 MB; the
+  OneDrive has folders of WAV files that overlap heavily (see the table).
 
-**Decision (2026-10-30).** Use the OneDrive files only for building and testing
-code (the explorer, `audit.py`, `dataset.py`, the overfit test). Do **not**
-train reported models or publish results from them. Before Phase 2 proper:
-
-- ~~Find out who published the OneDrive link.~~ Answered (2026-11-01): it is
-  the personal OneDrive of Xiaoyang Du (UCAS account `duxiaoyang22`), a
-  citation author of the dataset (Shanghai Acoustics Laboratory, CAS). Record
-  it as an author-hosted source, not an official repository.
-- IEEE DataPort needs an account and often a subscription. Many universities
-  provide institutional access: check with the library or the course
-  instructor.
-- Find the license. The documentation does not state one, and it decides
-  whether excerpts or derived data may be committed to this repository.
+**Open:** find the license. The documentation does not state one. Until it is
+known, commit only metadata (names, formats, hashes, splits), never audio or
+excerpts. IEEE DataPort, the other source, needs an account and often a
+subscription (check institutional access).
 
 **Hydrophone facts that affect modeling** (from the documentation):
 DigitalHyd SR-1, 52,734 Hz, usable band **1–25.8 kHz**. Below 1 kHz the
@@ -217,12 +298,14 @@ calibrated. Resampling to 32 kHz also discards 16–25.8 kHz.
 
 ## Known issues to fix
 
-- `backend/app/modules/acoustics/clips.py` skips every file named "副本" as a
-  duplicate. In the 10-file sample none of them matches another file, so 6 of
-  the 10 "other vessel" clips are hidden; whether that holds for the full
-  folder is unconfirmed. Fix during Phase 2: skip a copy only if it is
-  byte-identical to its original, and parse its name without the suffix so it
-  keeps its recording timestamp.
+- ~~`clips.py` skips every "副本" file as a duplicate.~~ Fixed 2026-11-03
+  (commit `8ce184b`): a copy is skipped only when byte-identical to its
+  original in the same folder, and keeps its recording timestamp. In the full
+  dataset every copy is a duplicate of a clip in another folder; the audit
+  removes those by hash across folders.
+- `backend/tests/test_language_models_paper_facts.py` (not acoustics) fails on
+  Windows: it reads a JSON file without `encoding="utf-8"`. Tell the owner of
+  that module.
 
 ## Run records (required for every training run)
 

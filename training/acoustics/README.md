@@ -6,7 +6,7 @@ MobileNetV2, first centralized, then FedAvg with 3 simulated clients (IID and
 non-IID). Measured results will later be exported as JSON for
 `backend/app/modules/acoustics/`. Nothing here runs inside the API.
 
-Owner: Bryn. Status: **Phase 1 (environment) done.** No model has been trained
+Owner: Bryn. Status: **Phase 2 (dataset audit and splits) done.** No model has been trained
 yet. For the full plan, progress so far, dataset notes and the required run
 record fields, see [TRAINING.md](TRAINING.md).
 
@@ -19,8 +19,15 @@ training/acoustics/
   requirements.txt        direct dependencies, exact pins
   requirements.lock.txt   full `pip freeze` of the verified environment
   envinfo.py              environment provenance + GPU smoke test
+  qiandao.py              what QiandaoEar22 file names and folders mean
+  extract.py              hash the downloaded zips, extract data/qiandaoear22_full/
+  audit.py                inventory, formats, duplicates -> results/audit/
+  split.py                session-grouped train/val/test -> splits/
+  tests/                  pytest tests (run: .venv/Scripts/python.exe -m pytest)
   results/env/            saved environment reports (committed)
-  data/                   raw audio and manifests' sources (gitignored)
+  results/audit/          archive hashes, file inventory, audit summary (committed)
+  splits/                 split manifest, its hash and summary (committed)
+  data/                   raw audio and downloaded zips (gitignored)
   checkpoints/            model weights (gitignored)
   .venv/                  virtual environment (gitignored)
 ```
