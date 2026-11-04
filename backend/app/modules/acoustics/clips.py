@@ -14,6 +14,7 @@ a .wav file inside the data folder.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +31,10 @@ _AUDIBILITY = {"S": "strong", "M": "middle", "W": "weak"}
 
 NOISE_WINDOW_OFFSET_S = 60.0  # background files are 5 minutes: skip the first minute
 _CATEGORIES = ("speedboat_target", "speedboat_other", "noise")
-_DUPLICATE_MARK = "副本"  # Chinese Windows suffix for "copy": a duplicate file in the source folder
+# Windows names a copied file "<name> - 副本" ("copy"). In QiandaoEar22 most copies
+# have no original in the same folder, so a copy is only skipped when it is
+# byte-identical to "<name>" next to it.
+_COPY_SUFFIX = " - 副本"
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ def _vessels(text: str) -> list[str]:
 
 def describe(category: str, stem: str) -> tuple[str, str]:
     """(human-readable label, recording id) from a category and file stem."""
+    stem = stem.removesuffix(_COPY_SUFFIX)
     if category == "noise":
         return f"Background noise, recording {stem}", stem
     match = _SHIP_NAME.match(stem)
@@ -65,8 +70,24 @@ def describe(category: str, stem: str) -> tuple[str, str]:
     return f"{vessels}", match["ts"]
 
 
+def _sha256(path: Path) -> str:
+    with path.open("rb") as fh:
+        return hashlib.file_digest(fh, "sha256").hexdigest()
+
+
+def _is_identical_copy(path: Path) -> bool:
+    if not path.stem.endswith(_COPY_SUFFIX):
+        return False
+    original = path.with_name(path.stem.removesuffix(_COPY_SUFFIX) + path.suffix)
+    return (
+        original.is_file()
+        and original.stat().st_size == path.stat().st_size
+        and _sha256(original) == _sha256(path)
+    )
+
+
 def _is_wav(path: Path) -> bool:
-    return path.suffix.lower() == ".wav" and _DUPLICATE_MARK not in path.name
+    return path.suffix.lower() == ".wav" and not _is_identical_copy(path)
 
 
 def _make_clip(root: Path, path: Path, category: str) -> Clip:

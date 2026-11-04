@@ -17,6 +17,8 @@ from app.modules.acoustics import clips, dsp, service
 from app.modules.acoustics.schemas import SpectrogramInput
 
 SHIP_NAME = "20220628151815_M_SpeedBoat_N_S&SpeedBoat_M_M_1_label__1__9.wav"
+SAME_COPY = "20220628151815_M_SpeedBoat_N_S&SpeedBoat_M_M_1_label__1__9 - 副本.wav"  # byte-identical to SHIP_NAME
+DISTINCT_COPY = "20220628110727_M_Cargo_M_S&Cargo_M_S&QianDao_M_M_1_label__1__20 - 副本.wav"  # no original present
 
 
 def write_wav(path: Path, samples: np.ndarray, width: int, rate: int, channels: int = 1) -> None:
@@ -46,8 +48,9 @@ def dataset(tmp_path: Path) -> Path:
     """A tiny fake dataset with the same folder layout as the real one."""
     root = tmp_path / "qiandaoear22"
     write_wav(root / "speedboat_target" / SHIP_NAME, sine(1000, 52734, 3.0), 4, 52734)
-    write_wav(root / "speedboat_target" / "x - 副本.wav", sine(500, 52734, 3.0), 4, 52734)
+    write_wav(root / "speedboat_target" / SAME_COPY, sine(1000, 52734, 3.0), 4, 52734)
     write_wav(root / "speedboat_other" / "20220628110227_M_Cargo_M_M&Cargo_F_W_1_label__1__21.wav", sine(300, 52734, 3.0), 4, 52734)
+    write_wav(root / "speedboat_other" / DISTINCT_COPY, sine(700, 52734, 3.0), 4, 52734)
     # A 10 s background file is shorter than the 60 s offset: the last 3 s are used.
     write_wav(root / "noise" / "data0001" / "DATA0033.WAV", 0.01 * np.random.default_rng(1).standard_normal(8000 * 10), 3, 8000)
     return root
@@ -186,7 +189,21 @@ def test_scan_and_labels(dataset):
     assert ship.label == "SpeedBoat (near, strong), SpeedBoat (medium, middle)"
     assert ship.recording_id == "20220628151815"
     assert found["noise"].recording_id == "DATA0033"
-    assert len([c for c in clips.scan_clips(dataset) if c.category == "speedboat_target"]) == 1  # duplicate skipped
+    assert len([c for c in clips.scan_clips(dataset) if c.category == "speedboat_target"]) == 1  # identical copy skipped
+
+
+def test_distinct_copy_is_listed_under_its_recording(dataset):
+    others = {c.id: c for c in clips.scan_clips(dataset) if c.category == "speedboat_other"}
+    copy = others[f"speedboat_other/{DISTINCT_COPY}"]
+    assert copy.recording_id == "20220628110727"
+    assert copy.label == "Cargo (medium, strong), Cargo (medium, strong), QianDao (medium, middle)"
+    assert clips.resolve_clip(dataset, copy.id).id == copy.id
+
+
+def test_copy_that_differs_from_its_original_is_listed(dataset):
+    write_wav(dataset / "speedboat_target" / SAME_COPY, sine(1500, 52734, 3.0), 4, 52734)  # now differs
+    ids = {c.id for c in clips.scan_clips(dataset) if c.category == "speedboat_target"}
+    assert ids == {f"speedboat_target/{SHIP_NAME}", f"speedboat_target/{SAME_COPY}"}
 
 
 def test_scan_spreads_picks_over_many_files(tmp_path):
@@ -208,7 +225,7 @@ def test_scan_spreads_picks_over_many_files(tmp_path):
         "C:\\Windows\\win.ini",
         "other_folder/file.wav",
         "speedboat_target/missing.wav",
-        "speedboat_target/x - 副本.wav",
+        f"speedboat_target/{SAME_COPY}",
         "",
     ],
 )
