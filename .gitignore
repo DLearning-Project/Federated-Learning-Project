@@ -22,6 +22,8 @@ htmlcov/
 # Acoustics training: raw audio and model weights stay out of Git
 training/acoustics/data/
 training/acoustics/checkpoints/
+# Reference papers and dataset documentation (no clear redistribution license; cited in TRAINING.md)
+training/references/
 *.pth
 *.pt
 *.ckpt

@@ -5,139 +5,178 @@
     "val": 0.15,
     "test": 0.15
   },
-  "grouping": "session (back-to-back ship recordings; consecutively numbered noise files per card)",
+  "grouping": "session (back-to-back ship recordings; consecutively numbered noise files per card); ship sessions over 6 recordings cut into blocks with a 1-recording gap",
+  "balance": "size vs. target fractions + 1.0 x closest-vessel distance mix (vessel clips); best of 300 seeded restarts with move/swap improvement",
   "label_rule": "vessel = ship clip (all_far_weak kept, flagged); no_vessel = 3 s windows of background files",
   "excluded_files": {
     "non_vessel_only": 100
   },
+  "gap_clips_dropped": 395,
+  "gap_recordings_dropped": [
+    "20220626100727",
+    "20220628111229",
+    "20220628151815",
+    "20220628155321"
+  ],
   "per_split": {
     "train": {
-      "examples": 10937,
-      "vessel": 7337,
+      "examples": 10808,
+      "vessel": 7208,
       "no_vessel": 3600,
-      "share_of_vessel": 0.6996,
+      "share_of_vessel": 0.7142,
       "share_of_no_vessel": 0.72,
-      "vessel_all_far_weak": 628,
+      "vessel_all_far_weak": 802,
+      "vessel_closest_distance": {
+        "N": 0.3667,
+        "M": 0.5112,
+        "F": 0.121
+      },
       "groups": [
         "noise/DATA0001/DATA0132",
         "noise/DATA0002/DATA0145",
-        "ship/20220624114901",
-        "ship/20220624140927",
-        "ship/20220625094307",
-        "ship/20220625104819",
-        "ship/20220625124843",
-        "ship/20220625145907",
-        "ship/20220626104735",
-        "ship/20220626153329",
-        "ship/20220628093209",
-        "ship/20220628144809"
-      ],
-      "recordings": 117,
-      "days": {
-        "20220624": 116,
-        "20220625": 498,
-        "20220626": 2913,
-        "20220628": 3810
-      },
-      "clips_per_source_name": {
-        "SpeedBoat": 9847,
-        "QianDao": 6394,
-        "KaiYuan": 2270,
-        "No7": 669,
-        "Cargo": 660,
-        "TheEarl": 559,
-        "GreenCity": 506,
-        "TheKnight": 360,
-        "Unknown": 276,
-        "WorkShip": 251,
-        "UUV": 203,
-        "ArtificialSignals": 203,
-        "BigPassengerShip": 135,
-        "FishBoat": 100,
-        "QianDao296": 52,
-        "QianDao351": 25,
-        "": 23,
-        "QianDao_M_MS": 10
-      }
-    },
-    "val": {
-      "examples": 2275,
-      "vessel": 1575,
-      "no_vessel": 700,
-      "share_of_vessel": 0.1502,
-      "share_of_no_vessel": 0.14,
-      "vessel_all_far_weak": 246,
-      "groups": [
-        "noise/DATA0001/DATA0039",
-        "ship/20220624101843",
+        "ship/20220624105851",
         "ship/20220624110853",
+        "ship/20220624114901",
+        "ship/20220624145937",
         "ship/20220624153943",
         "ship/20220624154945",
-        "ship/20220624161951",
         "ship/20220625084757",
+        "ship/20220625094307",
         "ship/20220625102315",
-        "ship/20220625130345",
+        "ship/20220625110823",
         "ship/20220625131847",
-        "ship/20220625142901"
+        "ship/20220625140357",
+        "ship/20220625142901",
+        "ship/20220626093721#0",
+        "ship/20220626104735#0",
+        "ship/20220626104735#1",
+        "ship/20220626104735#gap0",
+        "ship/20220626153329#0",
+        "ship/20220626153329#1",
+        "ship/20220626153329#2",
+        "ship/20220626153329#gap0",
+        "ship/20220626153329#gap1",
+        "ship/20220628093209#0",
+        "ship/20220628093209#1",
+        "ship/20220628093209#2",
+        "ship/20220628093209#gap0",
+        "ship/20220628093209#gap1",
+        "ship/20220628144809#2"
       ],
-      "recordings": 34,
+      "recordings": 123,
       "days": {
-        "20220624": 1032,
-        "20220625": 543
+        "20220624": 590,
+        "20220625": 876,
+        "20220626": 3433,
+        "20220628": 2309
       },
       "clips_per_source_name": {
-        "SpeedBoat": 820,
-        "ArtificialSignals": 615,
-        "UUV": 545,
-        "No7": 497,
-        "FishBoat": 360,
-        "Unknown": 125,
-        "MotorBoat": 100,
-        "PoliceBoat": 100,
-        "Helicopter": 19,
+        "SpeedBoat": 7748,
+        "QianDao": 5115,
+        "KaiYuan": 1672,
+        "No7": 1020,
+        "GreenCity": 635,
+        "Cargo": 576,
+        "TheEarl": 559,
+        "ArtificialSignals": 533,
+        "UUV": 463,
+        "Unknown": 401,
+        "TheKnight": 360,
+        "FishBoat": 266,
+        "WorkShip": 251,
+        "BigPassengerShip": 135,
+        "QianDao296": 52,
+        "No5": 29,
+        "QianDao351": 25,
+        "": 23,
+        "QianDao_M_MS": 10,
         "No7_Slow_Down": 8
       }
     },
-    "test": {
-      "examples": 2275,
-      "vessel": 1575,
+    "val": {
+      "examples": 2139,
+      "vessel": 1439,
       "no_vessel": 700,
-      "share_of_vessel": 0.1502,
+      "share_of_vessel": 0.1426,
       "share_of_no_vessel": 0.14,
-      "vessel_all_far_weak": 197,
+      "vessel_all_far_weak": 23,
+      "vessel_closest_distance": {
+        "N": 0.3648,
+        "M": 0.533,
+        "F": 0.1022
+      },
+      "groups": [
+        "noise/DATA0001/DATA0039",
+        "ship/20220624123409",
+        "ship/20220624134923",
+        "ship/20220625130345",
+        "ship/20220625145907",
+        "ship/20220626093721#1",
+        "ship/20220628093209#3",
+        "ship/20220628144809#0"
+      ],
+      "recordings": 25,
+      "days": {
+        "20220624": 151,
+        "20220625": 153,
+        "20220626": 521,
+        "20220628": 614
+      },
+      "clips_per_source_name": {
+        "QianDao": 2152,
+        "SpeedBoat": 1538,
+        "KaiYuan": 362,
+        "KaiYan": 191,
+        "No7": 128,
+        "GreenCity": 116,
+        "Unknown": 100,
+        "CivilianBoats": 51,
+        "": 28
+      }
+    },
+    "test": {
+      "examples": 2145,
+      "vessel": 1445,
+      "no_vessel": 700,
+      "share_of_vessel": 0.1432,
+      "share_of_no_vessel": 0.14,
+      "vessel_all_far_weak": 158,
+      "vessel_closest_distance": {
+        "N": 0.3592,
+        "M": 0.5315,
+        "F": 0.1093
+      },
       "groups": [
         "noise/DATA0001/DATA0032",
         "noise/DATA0001/DATA0047",
         "noise/DATA0001/DATA0125",
-        "ship/20220624105851",
-        "ship/20220624123409",
-        "ship/20220624134923",
-        "ship/20220624145937",
-        "ship/20220625110823",
-        "ship/20220625140357",
-        "ship/20220626093721"
+        "ship/20220624101843",
+        "ship/20220624140927",
+        "ship/20220624161951",
+        "ship/20220625104819",
+        "ship/20220625124843",
+        "ship/20220628144809#1"
       ],
-      "recordings": 28,
+      "recordings": 27,
       "days": {
-        "20220624": 238,
-        "20220625": 197,
-        "20220626": 1140
+        "20220624": 645,
+        "20220625": 209,
+        "20220628": 591
       },
       "clips_per_source_name": {
-        "QianDao": 2464,
-        "SpeedBoat": 670,
-        "No7": 246,
-        "GreenCity": 245,
-        "KaiYan": 191,
-        "UUV": 154,
-        "ArtificialSignals": 154,
-        "Unknown": 100,
-        "CivilianBoats": 51,
-        "No5": 29,
-        "": 28
+        "SpeedBoat": 1257,
+        "QianDao": 826,
+        "UUV": 439,
+        "ArtificialSignals": 439,
+        "No7": 264,
+        "KaiYuan": 229,
+        "FishBoat": 194,
+        "MotorBoat": 100,
+        "PoliceBoat": 100,
+        "Helicopter": 19
       }
     }
   },
   "inventory_sha256": "33eea7677894fbda753e404ee6be26349b5454ec220d19123a58cb85a00522e0",
-  "manifest_sha256": "bdf42aa79755c584185da0fa68b15f529d8753c5215b4f5f0a44f47561227811"
+  "manifest_sha256": "b6a43609dd8b17aaa1f3860bb9e7e472d3fa439eade9758a2ae2a8ca21cd5c47"
 }

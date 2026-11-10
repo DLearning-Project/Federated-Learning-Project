@@ -6,6 +6,7 @@ Run from training/acoustics: .venv/Scripts/python.exe -m pytest
 import csv
 import json
 import zipfile
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -199,6 +200,54 @@ def test_leakage_check_catches_a_shared_recording():
         split.check_no_leakage(rows)
 
 
+def _ship_examples(session: str, starts: list[str]) -> list[dict]:
+    return [{"label": 1, "group": f"ship/{session}", "recording": ts, "closest_distance": "N"} for ts in starts]
+
+
+def recording_times(first: str, count: int) -> list[str]:
+    from datetime import datetime, timedelta
+    start = datetime.strptime(first, "%Y%m%d%H%M%S")
+    return [(start + timedelta(seconds=301 * i)).strftime("%Y%m%d%H%M%S") for i in range(count)]
+
+
+def test_make_blocks_cuts_long_sessions_with_gaps():
+    times = recording_times("20220628093209", 14)
+    examples = _ship_examples("20220628093209", times)
+    gaps = split.make_blocks(examples, block_recordings=6)
+    groups = [e["group"] for e in examples]
+    assert groups[:6] == ["ship/20220628093209#0"] * 6
+    assert groups[6] == "ship/20220628093209#gap0"
+    assert groups[7:] == ["ship/20220628093209#1"] * 7  # a single leftover joins the last block
+    assert gaps == {"ship/20220628093209#gap0": ("ship/20220628093209#0", "ship/20220628093209#1")}
+
+
+def test_short_sessions_stay_whole():
+    examples = _ship_examples("20220624101843", recording_times("20220624101843", 6))
+    assert split.make_blocks(examples, block_recordings=6) == {}
+    assert {e["group"] for e in examples} == {"ship/20220624101843"}
+
+
+def test_back_to_back_recordings_in_different_splits_are_refused():
+    a, b, c = recording_times("20220628093209", 3)
+    ok = [{"label": 1, "recording": a, "group": "x", "sha256": "1", "split": "train"},
+          {"label": 1, "recording": c, "group": "y", "sha256": "3", "split": "test"}]  # b dropped as a gap
+    split.check_no_leakage(ok)
+    bad = ok[:1] + [{"label": 1, "recording": b, "group": "y", "sha256": "2", "split": "test"}]
+    with pytest.raises(AssertionError, match="back-to-back"):
+        split.check_no_leakage(bad)
+
+
+def test_assign_groups_balances_distance_mix():
+    # Two near-heavy and two far-heavy groups: each split pair should get one of each kind.
+    counts = {
+        "n1": Counter(N=90, F=10), "n2": Counter(N=90, F=10),
+        "f1": Counter(N=10, F=90), "f2": Counter(N=10, F=90),
+    }
+    result = split.assign_groups(counts, (0.5, 0.25, 0.25), seed=1, restarts=20)
+    train = [g for g, s in result.items() if s == "train"]
+    assert sorted(g[0] for g in train) == ["f", "n"]
+
+
 def test_assign_groups_needs_three_groups():
     with pytest.raises(ValueError):
-        split.assign_groups({"a": 5, "b": 3}, split.DEFAULT_FRACTIONS, seed=0)
+        split.assign_groups({"a": Counter(N=5), "b": Counter(N=3)}, split.DEFAULT_FRACTIONS, seed=0)

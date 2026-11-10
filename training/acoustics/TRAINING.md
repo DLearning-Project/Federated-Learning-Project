@@ -27,7 +27,7 @@ calculation or a spectrogram computed from audio (see "Done so far").
 | 0 | Inspect repository, GPU and model/dataset sources | Done (2026-10-28) |
 | 1 | Reproducible Python environment with GPU PyTorch | Done (2026-10-28, commit `b035139`) |
 | — | Web app: spectrogram explorer (backend + frontend) | Done (backend `cda9c87`, frontend `cc50fc3`) |
-| 2 | Dataset audit and leakage-safe splits | Done (2026-11-03); split composition to review, see Phase 2 below |
+| 2 | Dataset audit and leakage-safe splits | Done (2026-11-03; split balanced by distance 2026-11-09) |
 | 3 | Centralized baseline | Not started |
 | 4 | FedAvg, IID and non-IID | Not started |
 | 5 | Show measured results on the web app | Not started |
@@ -80,7 +80,7 @@ must use `soxr` (Phase 2/3) and record that choice.
 ### Phase 2: audit and splits (2026-11-03)
 
 Code: `qiandao.py` (what names and folders mean), `extract.py`, `audit.py`,
-`split.py`, tests in `tests/test_phase2.py` (17 pass). Reproduce from
+`split.py`, tests in `tests/test_phase2.py` (21 pass). Reproduce from
 `training/acoustics/`:
 
 ```bash
@@ -123,33 +123,61 @@ Code: `qiandao.py` (what names and folders mean), `extract.py`, `audit.py`,
 - Grouping is by **session**, not single recording: neighbouring recordings
   hear the same vessel pass, so a recording-level split would still leak.
   Noise sessions are runs of consecutive file numbers on one card (6 runs).
-- Each class is split separately, choosing the best of 20,000 seeded
-  shuffles (seed `20261103`). `split.py` refuses any split where a group,
-  recording or file hash appears in two splits.
+- **Revised 2026-11-09: 30-minute blocks with gaps.** Splitting whole
+  sessions left validation at 19% and test at 23% near-vessel clips against
+  45% in train, because two sessions hold 71% of all near clips and each is
+  larger than a whole 15% split. Ship sessions longer than 6 recordings are
+  now cut into blocks of 6 (30 min); the 5-minute recording between two
+  blocks is a gap that joins them if both land in the same split and is
+  dropped otherwise. No two splits hold recordings less than 5 minutes apart
+  (`split.py` checks this), at the cost of 4 recordings (395 clips, 3.8%).
+- The assignment minimizes size mismatch plus the mismatch in
+  closest-vessel distance mix (near/medium/far), best of 300 seeded restarts
+  improved by moving or swapping blocks (seed `20261103`). `split.py`
+  refuses any split where a group, recording or file hash appears in two
+  splits.
+- Why not a perfectly "real-world" split: a deployed buoy hears unseen time
+  with whatever vessels pass, which whole sessions imitate best. But the
+  project compares centralized and FedAvg training on one test set, so a
+  test set skewed by chance would make that comparison noisy. Realism comes
+  from the evaluation instead (see Phase 3).
 
-**Result** (`splits/split_summary.json`, manifest SHA-256 `bdf42aa7…7811`):
+**Result** (`splits/split_summary.json`, manifest SHA-256 `b6a43609…5c47`):
 
-| Split | Vessel | No vessel | Sessions | Far-and-weak vessel |
-| --- | --- | --- | --- | --- |
-| train | 7,337 (70%) | 3,600 (72%) | 10 ship + 2 noise | 628 |
-| val | 1,575 (15%) | 700 (14%) | 10 ship + 1 noise | 246 |
-| test | 1,575 (15%) | 700 (14%) | 7 ship + 3 noise | 197 |
+| Split | Vessel | No vessel | Ship blocks + noise sessions | Near / medium / far | All far-and-weak |
+| --- | --- | --- | --- | --- | --- |
+| train | 7,208 (71.4%) | 3,600 (72%) | 28 + 2 | 37 / 51 / 12% | 802 |
+| val | 1,439 (14.3%) | 700 (14%) | 7 + 1 | 36 / 53 / 10% | 23 |
+| test | 1,445 (14.3%) | 700 (14%) | 6 + 3 | 36 / 53 / 11% | 158 |
 
 **Limitations to keep in mind:**
 
-- Whole sessions make the splits differ in content. Validation has no
-  QianDao or KaiYuan clips; validation and test have no 2022-06-28
-  recordings; validation noise comes from one session. Scores therefore
-  measure generalization to unseen sessions, and val/test may disagree.
+- Splits still differ in some content: test has no 2022-06-26 clips,
+  validation has only 23 all-far-and-weak clips (report far-and-weak recall
+  on test), and validation noise comes from one session.
+- A vessel heard at the end of one block could in principle still be heard
+  after the 5-minute gap; this is a much smaller risk than splitting by clip,
+  but not zero.
 - Background files have no date or link to the ship recordings, so the model
   could partly learn "which card or day" instead of "vessel or not". Look for
   this in Phase 3 errors.
 - Vessel examples outnumber no-vessel windows about 2 : 1; Phase 3 must
   account for it (class weights or balanced sampling) and report per-class
   metrics.
+- The background clips were hand-picked "without targets and other
+  interference" (paper, §2.2), so they are cleaner than what a buoy hears;
+  false-alarm rates measured on them are optimistic.
 - The audit summary records `dirty: true` only because an unrelated,
   untracked report draft (`docs/`) was present; the code was commit
   `f09bab8` with no modified tracked files.
+
+**Comparison with the authors' results.** The paper (Du & Hong,
+arXiv:2406.04354, §3.1) reports 99.79% accuracy (CRNN, log-Mel) on the
+same binary task, using "the first 5000 ship noise recordings" and the same
+50 background files, split 70/15/15 with no mention of grouping by recording.
+Neighbouring 3-second clips of one pass were then probably in both training
+and test, so that figure is likely optimistic. Expect lower numbers from our
+leakage-safe split; that difference is a finding, not a failure.
 
 ## The training pipeline, step by step
 
@@ -215,7 +243,15 @@ Steps:
    size 16 (8 GB GPU) and measure peak memory before increasing it.
 6. Evaluate the chosen checkpoint on the **test split once**. Never tune
    settings based on test results.
-7. Save the run record, metrics, confusion matrix, plots and checkpoint hash.
+7. Evaluate the way a buoy would run: slide the model over whole recordings
+   (the 5-minute background files and each recording's clip sequence) in
+   3-second windows, and raise an alert only when several windows in a row
+   score above the threshold (for example 2 of 3). Report, besides
+   per-window metrics: **false alarms per hour** on background audio,
+   **share of vessel passes detected** (per pass, not per clip), and
+   recall separately for **near / medium / far** and for all-far-and-weak
+   clips.
+8. Save the run record, metrics, confusion matrix, plots and checkpoint hash.
 
 ### Phase 4: FedAvg (IID and non-IID)
 
@@ -248,10 +284,11 @@ evaluate on real lake recordings before claiming any performance.
 
 ## Data source
 
-**Source.** The personal OneDrive of Xiaoyang Du (UCAS account
-`duxiaoyang22`), a citation author of the dataset (Shanghai Acoustics
-Laboratory, CAS): folder `QiandaoEar22`, last modified 2024-03-20. Recorded as
-an **author-hosted** source, not an official repository. Downloaded
+**Source.** The OneDrive of Xiaoyang Du (UCAS account `duxiaoyang22`), first
+author of the dataset paper (Shanghai Acoustics Laboratory, CAS): folder
+`QiandaoEar22`, last modified 2024-03-20. The official repository,
+https://github.com/xiaoyangdu22/QiandaoEar22, names this OneDrive as the
+download, so it is the **official distribution** (checked 2026-11-04). Downloaded
 2026-10-30 to 2026-11-03 as 17 zips into `data/archives/` (gitignored); names,
 sizes and SHA-256 hashes are in `results/audit/archives.csv`. OneDrive could
 not zip `SpeedBoat/other` in one piece, so it came in 9 parts
@@ -264,6 +301,22 @@ not zip `SpeedBoat/other` in one piece, so it came in 9 parts
 | `UUV数据集/other`, `/target` | 2,000 + 902 | 0 + 0 |
 | `noise_target数据集/noise/DATA0001`, `/DATA0002` | 30 + 20 | 50 |
 | `noise_target数据集/target` | 4,250 | 0 |
+
+**What the folders are** (from the paper: Du & Hong, "QiandaoEar22: A high
+quality noise dataset for identifying specific ship from multiple underwater
+acoustic targets using ship-radiated noise", arXiv:2406.04354, 2024). Each
+folder is one of the authors' experiments. `noise_target` is Task 1 (ship vs.
+background, our task): "the first 5000 ship noise recordings" plus "the
+initial 30 recordings from DATA0001 and 20 recordings from DATA0002"; the
+other ~18 h of background described in the paper were not published.
+`SpeedBoat`, `KaiYuan` and `UUV` are Task 2 (one vessel vs. the rest); their
+target counts match the paper's Table 5 exactly. The paper's SpeedBoat
+training set has 2,578 "other" clips, exactly the number of "副本" copies, so
+the copies are the authors' own duplication of that class. The paper counts
+143 "recordings" by consistent labels, not by file timestamp, which explains
+our 130. It does not define `ArtificialSignals`, `Unknown` or `KaiYan`.
+Local copies of the paper and documentation are in `training/references/`
+(gitignored).
 
 **Development sample.** 27 WAV files (330 MB) from the same OneDrive in
 `data/qiandaoear22/`, used by the spectrogram explorer and quick tests. All 27
@@ -286,10 +339,9 @@ are also in the full download. Inspected 2026-10-30:
 - The documentation describes about 209 archives of roughly 100 MB; the
   OneDrive has folders of WAV files that overlap heavily (see the table).
 
-**Open:** find the license. The documentation does not state one. Until it is
-known, commit only metadata (names, formats, hashes, splits), never audio or
-excerpts. IEEE DataPort, the other source, needs an account and often a
-subscription (check institutional access).
+**Open:** find the license. Neither the documentation, the paper nor the
+GitHub repository states one. Until it is known, commit only metadata (names,
+formats, hashes, splits), never audio, excerpts or the PDFs.
 
 **Hydrophone facts that affect modeling** (from the documentation):
 DigitalHyd SR-1, 52,734 Hz, usable band **1–25.8 kHz**. Below 1 kHz the
